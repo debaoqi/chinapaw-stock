@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.3.0',APP_BUILD=9;
+const APP_VER='1.3.1',APP_BUILD=10;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -227,11 +227,17 @@ const MODES={sea:['海运','Sea','ship'],air:['空运','Air','plane'],road:['陆
 /* 运费：每种运输方式 = 单价 + 计费单位（公斤 / 立方米 / 吨）+ 时效。按实际重量和体积换算的“计费量” × 单价 = 运费 */
 const FR_UNIT={kg:['公斤','kg','kg'],cbm:['立方米','m³','m³'],t:['吨','ton','t']};
 const FR_FAC={sea:1000,air:167,road:333,express:200};   /* 1 立方米折算多少公斤（体积重） */
-const FR_DEF={sea:[2000,28,45,'cbm'],air:[100,5,9,'kg'],road:[1,1,3,'kg'],express:[160,3,6,'kg']};
-function frRate(m){const r=(((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).rates||{})[m]||FR_DEF[m];return {p:+r[0]||0,d1:+r[1]||0,d2:+r[2]||0,unit:FR_UNIT[r[3]]?r[3]:'kg'}}
+const FR_DEF={sea:[1800,28,45,'cbm','CNY'],air:[100,5,9,'kg','base'],road:[1,1,3,'kg','base'],express:[160,3,6,'kg','base']};
+function frRate(m){const r=(((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).rates||{})[m]||FR_DEF[m];const cu=r[4]==='CNY'?'CNY':baseIso();return {p:+r[0]||0,d1:+r[1]||0,d2:+r[2]||0,unit:FR_UNIT[r[3]]?r[3]:'kg',cur:cu}}
+/* 人民币 → 本币汇率：自动取实时汇率（6 小时更新一次），也可手动填写（手动优先） */
+function fxCNY(){const b=baseIso();if(b==='CNY')return 1;const m=+LS.get('fxCNYman',0);if(m>0)return m;const x=LS.get('fxCNY',null);return x&&x.b===b?x.r:0}
+function fxInfo(){if(+LS.get('fxCNYman',0)>0)return L('手动汇率','manual rate');const x=LS.get('fxCNY',null);return x&&x.b===baseIso()?L('实时汇率 ','live rate ')+new Date(x.t).toLocaleString(S.lang==='zh'?'zh-CN':'en-GB',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):L('正在获取实时汇率…','getting live rate…')}
+async function loadFxCNY(force){const b=baseIso();if(b==='CNY')return;const x=LS.get('fxCNY',null);if(!force&&x&&x.b===b&&Date.now()-x.t<6*36e5)return;
+  try{const j=await (await fetch('https://open.er-api.com/v6/latest/CNY')).json();const r=j&&j.rates&&j.rates[b];if(r){LS.set('fxCNY',{b,r,t:Date.now()});if(window.softRender)softRender(true)}}catch(e){}}
+const toBase=(v,cur)=>cur==='CNY'&&baseIso()!=='CNY'?(+v||0)*fxCNY():(+v||0);
 function frCost(m,kg,cbm,rate){const r=rate||frRate(m);kg=+kg||0;cbm=+cbm||0;const f=FR_FAC[m]||1000;
   const q=r.unit==='cbm'?Math.max(cbm,kg/1000):r.unit==='t'?Math.max(kg,cbm*f)/1000:Math.max(kg,cbm*f);
-  return {q:Math.round(q*1000)/1000,unit:r.unit,p:r.p,cost:Math.round(q*r.p*100)/100,byVol:r.unit==='cbm'?cbm>=kg/1000:cbm*f>kg}}
+  return {q:Math.round(q*1000)/1000,unit:r.unit,p:r.p,cur:r.cur,cost:Math.round(q*r.p*100)/100,costB:Math.round(toBase(q*r.p,r.cur)*100)/100,byVol:r.unit==='cbm'?cbm>=kg/1000:cbm*f>kg}}
 const frUnitName=u=>L(FR_UNIT[u][0],FR_UNIT[u][1]);
 const carrier=id=>CARRIERS.find(c=>c.id===id)||CARRIERS[CARRIERS.length-1];
 const trackUrl=s=>{const c=carrier(s.carrier);return c.url&&s.trackNo?c.url.replace('{no}',encodeURIComponent(s.trackNo)):''};
@@ -367,7 +373,7 @@ function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(see
 async function seedDemo(){
   const R=rng(20261124),pick=a=>a[Math.floor(R()*a.length)],now=Date.now(),D=864e5;
   const d={};KINDS.forEach(k=>d[k]=[]);
-  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[2000,28,45,'cbm'],air:[100,5,9,'kg'],road:[1,1,3,'kg'],express:[160,3,6,'kg']},lowRule:'min',plan:{limit:1}},{id:'codes',list:[]}];
+  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1800,28,45,'cbm','CNY'],air:[100,5,9,'kg'],road:[1,1,3,'kg'],express:[160,3,6,'kg']},lowRule:'min',plan:{limit:1}},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'特马总仓',en:'Tema Main Warehouse'},city:{zh:'特马',en:'Tema'}},{id:'W2',n:{zh:'阿克拉门店仓',en:'Accra Shop Store'},city:{zh:'阿克拉',en:'Accra'}},{id:'W3',n:{zh:'库马西仓',en:'Kumasi Warehouse'},city:{zh:'库马西',en:'Kumasi'}}];
   const P=[['水泥 42.5R 50kg','Cement 42.5R 50kg','包','bag',78,92,300,4000,1,'建材','Building'],
    ['螺纹钢 Φ12 12m','Rebar Φ12 12m','根','pc',95,118,150,2500,0,'钢材','Steel'],['螺纹钢 Φ16 12m','Rebar Φ16 12m','根','pc',168,205,100,1500,0,'钢材','Steel'],

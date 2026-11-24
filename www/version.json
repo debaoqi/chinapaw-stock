@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "build": 9,
+  "version": "1.3.1",
+  "build": 10,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,6 +10,8 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "物流服务改为运费计算器：运费单价可用人民币报价（如海运每立方米 ¥1800，按实时汇率自动换算成赛地）+ 清关费（按台 / 个 / 票 / 柜）+ 其他费用 = 合计",
+      "付款凭证号随付款方式变化：现金填收据号，银行转账填流水号，手机钱包填交易号",
       "空白开始：新客户打开后没有任何演示数据，首页有“开始使用”7 步清单（公司、门店、分类、商品+现有库存、供应商、客户、人员密码）",
       "商品分类可自行新增、改名、删除（如摩托车、手机、配件），库存页按分类筛选；商品可删除，新增商品可直接录入现有库存",
       "中文名称自动生成英文（门店、客户、供应商、商品、分类、职位、公司名称）",
@@ -17,6 +19,8 @@
       "总经理可在“系统设置 → 数据管理”清空业务数据开始正式使用；演示数据中的总经理改为孙总"
     ],
     "en": [
+      "Freight calculator: price in RMB (e.g. sea ¥1800 per m³, converted at the live rate) + clearance fees (per unit / piece / shipment / container) + other fees = total",
+      "Payment reference follows the method: receipt no. for cash, bank reference for transfers, transaction ID for mobile money",
       "Blank start: no demo data; the home page has a 7-step “Get started” checklist",
       "Editable product categories (e.g. motorcycles, phones, parts) with a filter on the stock page; items can be deleted; new items can include current stock",
       "English names are generated from Chinese names automatically",
