@@ -260,3 +260,10 @@ body.web .tnav::-webkit-scrollbar{display:none}
   body.web.authed .sheet,body.web.authed .toast{left:50%}
   body.web #screen .pad{padding:14px 16px}
 }
+
+/* 登录：先选职位 */
+.rolegrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.rolebtn{background:var(--card);border-radius:16px;padding:12px 6px;font-size:14px;font-weight:800;color:#161616;border:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.06);position:relative}
+.rolebtn:before{content:"";display:block;width:10px;height:10px;border-radius:50%;background:var(--rc);margin:0 auto 6px}
+.rolebtn.on{border-color:var(--rc);background:var(--rc);color:#fff}
+.rolebtn.on:before{background:#fff}

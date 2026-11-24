@@ -1,7 +1,11 @@
 import asyncio
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 async def as_(pg,pw):
-    await pg.evaluate("logout();S.view='login';render(true)");await pg.fill('#lgPw',pw);await pg.click('button.bigbtn');await pg.wait_for_timeout(500)
+    await pg.evaluate("logout();S.view='login';render(true)");await fillpw(pg,pw);await pg.click('button.bigbtn');await pg.wait_for_timeout(500)
     return await pg.evaluate("S.me?S.me.role+'/'+S.me.code:document.querySelector('#lgErr').textContent")
 async def main():
     async with async_playwright() as p:

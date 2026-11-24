@@ -1,5 +1,9 @@
 import asyncio
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
@@ -7,7 +11,7 @@ async def main():
         pg.on('pageerror',lambda e:errs.append('PAGEERR '+str(e)));pg.on('console',lambda m:errs.append('CONSOLE '+m.text) if m.type=='error' else None)
         await pg.goto('http://localhost:8765/admin/');await pg.wait_for_timeout(1500)
         await pg.screenshot(path='shots/a_login.png')
-        await pg.fill('#lgPhone','0240000001');await pg.fill('#lgPw','123456');await pg.click('button.bigbtn');await pg.wait_for_timeout(800)
+        await pg.fill('#lgPhone','0240000001');await fillpw(pg,'123456');await pg.click('button.bigbtn');await pg.wait_for_timeout(800)
         for lang in ['zh','en']:
             await pg.evaluate(f"setLang('{lang}')")
             for v in ['dash','products','stock','users','partners','wh','counts','ships','log','settings','backup','release']:
@@ -23,7 +27,7 @@ async def main():
         print('user added',await pg.evaluate("!!DB.all('users').find(u=>u.phone==='0240000009')"))
         # new user logs in on app
         app=await ctx.new_page();await app.goto('http://localhost:8765/');await app.wait_for_timeout(1200)
-        await app.fill('#lgPhone','0240000009');await app.fill('#lgPw','abcdef');await app.click('button.bigbtn');await app.wait_for_timeout(800)
+        await app.fill('#lgPhone','0240000009');await fillpw(app,'abcdef');await app.click('button.bigbtn');await app.wait_for_timeout(800)
         print('app login as',await app.evaluate("S.me&&S.me.role"),'admin still',await pg.evaluate("S.me.role"))
         print('\n'.join(errs) or 'NO ERRORS');await b.close()
 asyncio.run(main())

@@ -3,7 +3,7 @@
 用法：python3 build.py → 生成
   www/index.html        手机端（PWA / 安卓 App 内容）
   www/web.html          网站端（电脑宽屏，单文件，图标内嵌，双击即可打开）
-  www/admin/index.html  后台（总经理登录，直接进入后台管理）"""
+  www/admin/index.html  旧后台地址，自动转到网站端（后台已并入网站端）"""
 import re, pathlib, base64
 R = pathlib.Path(__file__).parent
 css = (R/'src/app.css').read_text(encoding='utf-8')
@@ -31,8 +31,8 @@ web = 'window.LOGO_DATA="' + logo_uri + '";'
 build('www/web.html', 'web', '<script src="config.js" onerror="void 0"></script>', web)
 s = (R/'www/web.html').read_text(encoding='utf-8').replace('<link rel="manifest" href="manifest.webmanifest">','').replace('href="icon-192.png"', 'href="'+logo_uri+'"')
 (R/'www/web.html').write_text(s, encoding='utf-8')
-build('www/admin/index.html', 'web admin', '<script>window.JXC_SESS="asess"</script><script src="../config.js"></script>', web)
-s = (R/'www/admin/index.html').read_text(encoding='utf-8').replace('<link rel="manifest" href="manifest.webmanifest">','').replace('href="icon-192.png"', 'href="'+logo_uri+'"').replace('<title>华宝进销存</title>','<title>华宝进销存 · 后台管理</title>')
-(R/'www/admin/index.html').write_text(s, encoding='utf-8')
+# 后台已并入网站端：旧的 /admin/ 地址（以及后台安卓 App）自动转到网站端的“后台管理”
+(R/'www/admin/index.html').write_text("""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>华宝进销存</title>
+<script>location.replace('../web.html#mgmt')</script></head><body style="font-family:sans-serif;text-align:center;padding:40px"><a href="../web.html#mgmt">华宝进销存 · 网站端 / Website</a></body></html>""", encoding='utf-8')
 v = re.search(r"APP_VER='([\d.]+)',APP_BUILD=(\d+)", core).groups()
 print('界面句子', len(en), '| APP_VER', v[0], 'APP_BUILD', v[1])

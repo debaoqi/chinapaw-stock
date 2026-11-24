@@ -1,6 +1,10 @@
 # 每个部门密码登录 → 打开该部门可见的所有页面（中 / 英），检查报错与混语
 import asyncio,sys
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 CODES=['111111','222222','333333','444444','555555','666666','444444-1']
 VIEWS=['home','stock','docs','fin','logi','me','report','msgs','logi_svc','recv_pick','take','po_new','so_new','ship_new','pr_new','sr_new','mgmt','m_users','m_stores','m_products','m_partners','m_settings','m_backup','m_log']
 ZH="(()=>{const w=document.createTreeWalker(document.querySelector('.phone'),NodeFilter.SHOW_TEXT);let n,o=[];while(n=w.nextNode()){if(n.parentElement.closest('[data-notr],script,style,#toast'))continue;if(/[\\u4e00-\\u9fff]/.test(n.nodeValue))o.push(n.nodeValue.trim().slice(0,30))}return o})()"
@@ -14,7 +18,7 @@ async def main():
         await pg.screenshot(path='shots/v2_login.png')
         for code in CODES:
             await pg.evaluate("logout();S.view='login';setLang('zh',true);render(true)");await pg.wait_for_timeout(200)
-            await pg.fill('#lgPw',code);await pg.click('button.bigbtn');await pg.wait_for_timeout(700)
+            await fillpw(pg,code);await pg.click('button.bigbtn');await pg.wait_for_timeout(700)
             role=await pg.evaluate('S.me&&S.me.role');tabs=await pg.evaluate("TABS().map(t=>t[0]).join(',')")
             print(code,role,'tabs:',tabs)
             await pg.screenshot(path=f'shots/v2_home_{code}.png')

@@ -20,6 +20,7 @@ create table if not exists jxc_users(
 );
 -- 从 v1.0（手机号登录）升级：增加账号代码，手机号不再必填，部门改为 6 个
 alter table jxc_users add column if not exists code text;
+alter table jxc_users add column if not exists is_admin boolean default false;   -- 总经理授权使用后台
 do $$ begin
   if exists(select 1 from information_schema.columns where table_name='jxc_users' and column_name='phone') then
     alter table jxc_users alter column phone drop not null;
@@ -78,7 +79,7 @@ begin
 end $$;
 
 create or replace function jxc_user_json(u jxc_users) returns jsonb language sql immutable as $$
-  select jsonb_build_object('id',u.id,'code',u.code,'name',u.name,'role',u.role,'wh',u.wh,'active',u.active) $$;
+  select jsonb_build_object('id',u.id,'code',u.code,'name',u.name,'role',u.role,'wh',u.wh,'active',u.active,'admin',coalesce(u.is_admin,false)) $$;
 
 -- 账号代码 → 部门：111111 总经理 / 222222 采购主管 / 333333 销售经理 / 444444 仓库主管 / 555555 会计 / 666666 出纳；可带“-序号”
 create or replace function jxc_role_of(p_code text) returns text language sql immutable as $$
@@ -106,19 +107,24 @@ language sql immutable as $$
     else false end $$;
 
 -- ---------- 登录（只用密码）/ 退出 / 改密码 ----------
-create or replace function jxc_login(p_pw text, p_device text default null) returns jsonb
+-- 先删除旧版本的登录函数（v1.0 手机号登录、v1.1.0 只有密码），再创建新版：先选职位，再输入密码
+do $$ declare r record; begin
+  for r in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname='jxc_login' and n.nspname='public' loop
+    execute 'drop function '||r.sig; end loop;
+end $$;
+create or replace function jxc_login(p_pw text, p_role text default null, p_device text default null) returns jsonb
 language plpgsql security definer set search_path=public as $$
 declare v jxc_users; t text; f jxc_fail; dev text := left(coalesce(p_device,'?'),120);
 begin
   select * into f from jxc_fail where device=dev;
   -- 出错时返回 error（不抛异常），这样失败次数能保存下来，用于锁定
   if f.until is not null and f.until > now() then return jsonb_build_object('error','尝试次数过多，请 1 分钟后再试 / Too many attempts, try again in a minute'); end if;
-  select * into v from jxc_users where active and pw_hash = crypt(p_pw, pw_hash) limit 1;
+  select * into v from jxc_users where active and (p_role is null or role=p_role) and pw_hash = crypt(p_pw, pw_hash) limit 1;
   if v.id is null then
     insert into jxc_fail(device,n) values(dev,1) on conflict(device) do update set n=jxc_fail.n+1,
       until=case when jxc_fail.n+1>=5 then now()+interval '1 minute' else null end;
     perform pg_sleep(0.5);
-    return jsonb_build_object('error','密码错误或账号已停用 / Wrong password or account disabled');
+    return jsonb_build_object('error','职位或密码不正确，或账号已停用 / Wrong position or password, or account disabled');
   end if;
   delete from jxc_fail where device=dev;
   insert into jxc_sessions(user_id,device) values(v.id,dev) returning token into t;
@@ -170,7 +176,7 @@ begin
   v_me := jxc_me_row(p_token);
   for op in select * from jsonb_array_elements(p_ops) loop
     v_k := op->>'k'; v_id := op->>'id'; v_d := op->'d'; v_u := coalesce((v_d->>'u')::bigint,0);
-    if v_k is null or v_id is null or v_d is null or not jxc_can_write(v_me.role,v_k,v_d) then
+    if v_k is null or v_id is null or v_d is null or not (jxc_can_write(v_me.role,v_k,v_d) or (coalesce(v_me.is_admin,false) and v_k in ('products','partners','wh','settings'))) then
       rej := rej || jsonb_build_array(v_id); continue;
     end if;
     if v_k='settings' then   -- VIP 与门店数量只能由平台修改：公司提交的设置保留云端已有的 plan
@@ -199,7 +205,8 @@ language plpgsql security definer set search_path=public as $$
 declare a jxc_users; v_id text := nullif(p_user->>'id',''); v_code text := trim(p_user->>'code'); v_role text; v_pw text;
 begin
   a := jxc_me_row(p_token);
-  if a.role <> 'gm' then raise exception '只有总经理可以管理账号 / General manager only'; end if;
+  if a.role <> 'gm' and not coalesce(a.is_admin,false) then raise exception '没有后台权限 / No backend access'; end if;
+  if a.role <> 'gm' and (jxc_role_of(v_code)='gm' or exists(select 1 from jxc_users where id=v_id and role='gm')) then raise exception '总经理账号只能由总经理修改 / Only the general manager can edit GM accounts'; end if;
   if v_id is null then
     v_role := jxc_role_of(v_code);
     if v_role is null then raise exception '账号代码格式：部门代码或“部门代码-序号”，如 444444-1'; end if;
@@ -207,14 +214,16 @@ begin
     v_pw := coalesce(nullif(p_pw,''), v_code);
     if length(v_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
     if jxc_pw_taken(v_pw, null) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
-    insert into jxc_users(code,name,role,wh,active,pw_hash)
-      values(v_code,p_user->>'name',v_role,coalesce(p_user->>'wh','W1'),coalesce((p_user->>'active')::boolean,true),crypt(v_pw,gen_salt('bf')));
+    insert into jxc_users(code,name,role,wh,active,pw_hash,is_admin)
+      values(v_code,p_user->>'name',v_role,coalesce(p_user->>'wh','W1'),coalesce((p_user->>'active')::boolean,true),crypt(v_pw,gen_salt('bf')),
+        a.role='gm' and v_role<>'gm' and coalesce((p_user->>'admin')::boolean,false));
   else
     if v_id=a.id and not coalesce((p_user->>'active')::boolean,true) then raise exception '不能停用自己的账号 / You cannot disable yourself'; end if;
     if p_pw is not null and length(p_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
     if p_pw is not null and jxc_pw_taken(p_pw, v_id) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
     update jxc_users set name=coalesce(p_user->>'name',name), wh=coalesce(p_user->>'wh',wh), active=coalesce((p_user->>'active')::boolean,true),
-      pw_hash=case when p_pw is null then pw_hash else crypt(p_pw,gen_salt('bf')) end where id=v_id;
+      pw_hash=case when p_pw is null then pw_hash else crypt(p_pw,gen_salt('bf')) end,
+      is_admin=case when a.role='gm' and role<>'gm' then coalesce((p_user->>'admin')::boolean,false) else is_admin end where id=v_id;
     if p_pw is not null or not coalesce((p_user->>'active')::boolean,true) then delete from jxc_sessions where user_id=v_id; end if;
   end if;
   insert into jxc_audit(user_id,action,detail) values(a.id,'admin_user',jsonb_build_object('code',coalesce(v_code,v_id)));
@@ -266,12 +275,10 @@ revoke execute on function jxc_pw_taken(text,text) from public, anon, authentica
 do $$ begin
   if exists(select 1 from pg_proc where proname='jxc_bootstrap_admin') then
     execute 'revoke execute on function jxc_bootstrap_admin(text,text,text) from public, anon, authenticated'; end if;
-  if exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname='jxc_login' and n.nspname='public' and pg_get_function_identity_arguments(p.oid)='p_phone text, p_pw text, p_device text') then
-    execute 'drop function jxc_login(text,text,text)'; end if;
 end $$;
 
 -- 网页（anon）只能调用这些函数
-grant execute on function jxc_login(text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
+grant execute on function jxc_login(text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
   jxc_pull(text,bigint), jxc_push(text,jsonb), jxc_admin_user(text,jsonb,text), jxc_set_plan(text,text,jsonb) to anon, authenticated;
 
 -- ---------- 图片存储（商品图片、签收单照片） ----------

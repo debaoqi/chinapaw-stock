@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.1.0',APP_BUILD=2;
+const APP_VER='1.1.1',APP_BUILD=3;
 const CFG=window.JXC_CONFIG||{};
 const SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -86,7 +86,7 @@ const ROLES={
  cashier:{zh:'出纳',en:'Cashier',code:'666666',c:'b-orange',p:['fin','fin_receive','fin_pay']}
 };
 const ROLE_ORDER=['gm','buyer','sales','keeper','acct','cashier'];
-function can(p,u){u=u||S.me;if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
 function roleOfCode(code){const m=/^(\d{6})(?:-(\d{1,3}))?$/.exec(String(code||'').trim());if(!m)return null;return ROLE_ORDER.find(k=>ROLES[k].code===m[1])||null}
@@ -282,11 +282,11 @@ function exportXlsx(file,sheets){const co=nmP(((DB.get('settings','app')||{}).co
 /* ---------- 账号：只用密码登录（不需要手机号）。密码在全公司唯一，系统据此识别是哪个部门的哪个账号 ---------- */
 async function pwHash(id,pw){const b=new TextEncoder().encode('jxc|'+id+'|'+pw);const h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function findByPw(pw,exceptId){for(const u of DB.all('users')){if(u.id!==exceptId&&u.pw===await pwHash(u.id,pw))return u}return null}
-async function login(pw,trust){pw=String(pw||'').trim();const lk=LS.get('lock',{n:0,until:0});
+async function login(pw,trust,role){pw=String(pw||'').trim();const lk=LS.get('lock',{n:0,until:0});
   if(lk.until>Date.now())throw new Error(L(`尝试次数过多，请 ${Math.ceil((lk.until-Date.now())/1000)} 秒后再试`,`Too many attempts. Try again in ${Math.ceil((lk.until-Date.now())/1000)}s`));
-  try{if(DB.cloud){const r=await rpc('jxc_login',{p_pw:pw,p_device:(LS.get('dev',null)||(LS.set('dev',uid('d')),LS.get('dev','')))+' '+navigator.userAgent.slice(0,90)});if(!r||!r.token)throw new Error(r&&r.error?r.error.split(' / ')[S.lang==='zh'?0:1]||r.error:'');S.token=r.token;S.me=r.user}
-    else{const u=await findByPw(pw);if(!u||u.active===false)throw 0;S.me={...u};delete S.me.pw}}
-  catch(e){lk.n++;if(lk.n>=5){lk.until=Date.now()+60e3;lk.n=0}LS.set('lock',lk);throw new Error(e&&e.message&&DB.cloud?e.message:L('密码错误或账号已停用','Wrong password or account disabled'))}
+  try{if(DB.cloud){const r=await rpc('jxc_login',{p_pw:pw,p_role:role||null,p_device:(LS.get('dev',null)||(LS.set('dev',uid('d')),LS.get('dev','')))+' '+navigator.userAgent.slice(0,90)});if(!r||!r.token)throw new Error(r&&r.error?r.error.split(' / ')[S.lang==='zh'?0:1]||r.error:'');S.token=r.token;S.me=r.user}
+    else{const u=await findByPw(pw);if(!u||u.active===false||(role&&u.role!==role))throw 0;S.me={...u};delete S.me.pw}}
+  catch(e){lk.n++;if(lk.n>=5){lk.until=Date.now()+60e3;lk.n=0}LS.set('lock',lk);throw new Error(e&&e.message&&DB.cloud?e.message:L('职位或密码不正确，或账号已停用','Wrong position or password, or account disabled'))}
   LS.set('lock',{n:0,until:0});LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
 function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;if(Date.now()-s.t>30*864e5)return false;S.me=s.me;S.token=s.token;
   if(!DB.cloud){const u=DB.get('users',S.me.id);if(!u||u.active===false)return false;S.me={...u};delete S.me.pw}return true}
@@ -295,8 +295,10 @@ async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:
   const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
   if(await findByPw(nw,u.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
 /* 管理：新增 / 修改账号（总经理在后台操作） */
-async function saveAccount(a,newPw){const role=roleOfCode(a.code);if(!role)throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
-  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:a.name,wh:a.wh,active:a.active!==false},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
+async function saveAccount(a,newPw){const role=roleOfCode(a.code);if(!can('mgmt'))throw new Error(L('没有后台权限','No backend access'));
+  const old=a.id?DB.get('users',a.id):null;if(S.me.role!=='gm'){if(role==='gm'||(old&&old.role==='gm'))throw new Error(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));a={...a,admin:old?!!old.admin:false}}
+  if(role==='gm')a={...a,admin:false};if(!role)throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
+  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:a.name,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
   if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
   if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
   const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?a.code:null);

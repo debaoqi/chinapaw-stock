@@ -1,5 +1,9 @@
 import asyncio
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 V=['home','stock','docs','fin','logi','me','report','logi_svc','so_new','po_new','take','ship_new','recv_pick','msgs','m_users','m_stores','m_products','m_settings']
 async def main():
     async with async_playwright() as p:
@@ -8,7 +12,7 @@ async def main():
         for w in (320,360,412):
             ctx=await b.new_context(viewport={'width':w,'height':760},locale='zh-CN',timezone_id='Africa/Accra');pg=await ctx.new_page()
             await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(1000)
-            await pg.fill('#lgPw','111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(700)
+            await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(700)
             for lang in ('zh','en'):
                 await pg.evaluate(f"setLang('{lang}',true)")
                 for v in V:

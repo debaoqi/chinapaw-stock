@@ -1,8 +1,12 @@
 import asyncio
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 U='http://localhost:8766/'
 async def login(pg,pw):
-    await pg.goto(U);await pg.wait_for_timeout(1000);await pg.fill('#lgPw',pw);await pg.click('button.bigbtn');await pg.wait_for_timeout(2500)
+    await pg.goto(U);await pg.wait_for_timeout(1000);await fillpw(pg,pw);await pg.click('button.bigbtn');await pg.wait_for_timeout(2500)
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox']);errs=[]

@@ -3,7 +3,7 @@ const V={};
 const WEB=document.body.classList.contains('web'),ADMIN=document.body.classList.contains('admin');const LOGO=window.LOGO_DATA||'logo.svg';
 /* 每个页面需要的权限：没有权限直接回首页，部门之间不能越界 */
 const NEED={docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'po_recv',recv:'po_recv',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
-  mgmt:'*',m_users:'*',m_stores:'*',m_products:'*',m_partners:'*',m_settings:'*',m_backup:'*',m_log:'*'};
+  mgmt:'mgmt',m_users:'mgmt',m_stores:'mgmt',m_products:'mgmt',m_partners:'mgmt',m_settings:'mgmt',m_backup:'mgmt',m_log:'mgmt'};
 const LIVE=new Set(['home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
 const whName=id=>nm((DB.get('wh',id)||{}).n)||id||'';
 const ptName=id=>nmP((DB.get('partners',id)||{}).n)||'—';
@@ -62,7 +62,7 @@ function tnav(){const v=S.view;const b=n=>n?`<span class="cnt">${n>99?'99+':n}</
   const cnt={docs:todoCount(),fin:finTodo(),logi:DB.all('ships').filter(s=>s.status==='exception').length,me:Alerts.unread()};
   let h=TABS().map(([k,icon,label])=>`<button class="${v===k?'on':''}" onclick="tab('${k}')" aria-label="${esc(label)}"><span class="ti">${ic(icon,22)}${b(cnt[k])}</span><span class="tl">${label}</span></button>`).join('');
   if(WEB){h=`<div class="wbrand"><img class="logo" src="${LOGO}" alt=""><b class="one">${BRAND()}</b></div>`+h+
-    [can('report')?['report','chart',L('简易报表','Reports')]:null,['msgs','bell',L('消息','Messages')],S.me.role==='gm'?['mgmt','gear',L('后台管理','Management')]:null].filter(Boolean).map(([k,icon,label])=>`<button class="${v===k||(k==='mgmt'&&v.startsWith('m_'))?'on':''}" onclick="tab('${k}')"><span class="ti">${ic(icon,22)}${k==='msgs'?b(Alerts.unread()):''}</span><span class="tl">${label}</span></button>`).join('')+
+    [can('report')?['report','chart',L('简易报表','Reports')]:null,['msgs','bell',L('消息','Messages')],can('mgmt')?['mgmt','gear',L('后台管理','Management')]:null].filter(Boolean).map(([k,icon,label])=>`<button class="${v===k||(k==='mgmt'&&v.startsWith('m_'))?'on':''}" onclick="tab('${k}')"><span class="ti">${ic(icon,22)}${k==='msgs'?b(Alerts.unread()):''}</span><span class="tl">${label}</span></button>`).join('')+
     `<div class="wfoot"><div class="row gap6">${ctryBtn()}${langBtn()}${curBtn()}</div><div class="xs" style="margin-top:8px;opacity:.7">${esc(nmP(S.me.name))} · ${roleName(S.me.role)}</div></div>`}
   return `<nav class="tnav">${h}</nav>`}
 function topBars(){let h='';
@@ -118,23 +118,23 @@ function banner(n){const b=$('#banner');if(!b)return;b.innerHTML=`<div class="qi
 function markRead(id){const a=Alerts.list();a.forEach(n=>{if(!id||n.id===id)n.read=true});Alerts.save(a)}
 
 /* ================= 登录：只输入密码（不需要手机号），系统按密码识别部门与账号 ================= */
-V.login=()=>{const demo=!DB.cloud;
+const ROLE_COLOR={gm:'#161616',buyer:'#2367B0',sales:'#F2B705',keeper:'#0B7A4B',acct:'#7B4FA0',cashier:'#E87A2B'};
+V.login=()=>{if(S.lgRole===undefined)S.lgRole=LS.get('lgRole',null);
   return `<div class="login-hero"><div class="row between"><div class="row gap6" style="min-width:0"><img class="logo" src="${LOGO}" alt=""><b style="font-size:18px" class="one">${BRAND()}</b></div><div class="row" style="gap:8px">${ctryBtn()}${langBtn()}</div></div>
    <div class="fit" style="font-size:30px;font-weight:800;margin-top:26px;letter-spacing:-.5px;white-space:nowrap">${L('进销存，<span class="hl" style="background:var(--gold);color:#161616;padding:0 8px;border-radius:12px;display:inline-block;transform:rotate(-2deg)">很简单</span>！','Stock, <span style="background:var(--gold);color:#161616;padding:0 8px;border-radius:12px;display:inline-block;transform:rotate(-2deg)">simple</span>!')}</div>
    <div class="fit" style="opacity:.85;margin-top:6px;font-size:13px;font-weight:600;letter-spacing:1px;white-space:nowrap">${L('非洲 54 国通用 · 各部门各司其职','For all 54 African countries · every department in its lane')}</div></div>
   <div class="pad" style="padding-top:20px">
-   <div class="fld"><label>${L('输入密码登录','Sign in with your password')}</label><div class="row" style="position:relative"><input class="inp" id="lgPw" type="password" inputmode="text" autocomplete="current-password" style="font-size:20px;letter-spacing:3px;text-align:center" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"><button style="position:absolute;right:12px;color:var(--muted)" onclick="const i=$('#lgPw');i.type=i.type==='password'?'text':'password'" aria-label="show">${ic('lock',18)}</button></div></div>
+   <div class="fld"><label>${L('① 选择职位','① Choose your position')}</label><div class="rolegrid">${ROLE_ORDER.map(r=>`<button class="rolebtn ${S.lgRole===r?'on':''}" style="--rc:${ROLE_COLOR[r]}" onclick="S.lgRole='${r}';LS.set('lgRole','${r}');$$('.rolebtn').forEach(b=>b.classList.remove('on'));this.classList.add('on');$('#lgLab').textContent=L('② 输入','② Enter the ')+roleName('${r}')+L('密码',' password');$('#lgPw').focus()">${roleName(r)}</button>`).join('')}</div></div>
+   <div class="fld"><label id="lgLab">${S.lgRole?L('② 输入','② Enter the ')+roleName(S.lgRole)+L('密码',' password'):L('② 输入密码','② Enter your password')}</label><div class="row" style="position:relative"><input class="inp" id="lgPw" type="password" inputmode="text" autocomplete="current-password" style="font-size:20px;letter-spacing:3px;text-align:center" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"><button style="position:absolute;right:12px;color:var(--muted)" onclick="const i=$('#lgPw');i.type=i.type==='password'?'text':'password'" aria-label="show">${ic('lock',18)}</button></div></div>
    <div class="row between" style="margin-top:14px"><span class="sm b">${L('自动登录（信任此设备）','Stay signed in (trust this device)')}</span>${sw(LS.get('trust',true),"LS.set('trust',!LS.get('trust',true));render(false)")}</div>
    <div id="lgErr" class="sm red" style="margin-top:10px;min-height:18px"></div>
    <button class="bigbtn" style="width:100%" onclick="doLogin()">${L('登录','Sign in')}</button>
-   <div class="box"><h4>${L('各部门初始密码','Department starting passwords')}</h4>${ROLE_ORDER.map(r=>`<div class="li" ${demo?`onclick="$('#lgPw').value='${ROLES[r].code}';doLogin()"`:'style="cursor:default"'}><span class="badge ${ROLES[r].c}" style="min-width:84px;justify-content:center">${roleName(r)}</span><b data-notr style="flex:1;letter-spacing:2px">${ROLES[r].code}</b>${demo?ic('chev',16):''}</div>`).join('')}
-    <div class="xs muted" style="margin-top:8px;line-height:1.6">${L('首次登录后请到“我的 → 修改密码”改掉初始密码。同部门新增账号的初始密码为“部门代码-序号”，如 444444-1。','Change the starting password after first sign-in (Me → Change password). Extra accounts in a department start with “code-number”, e.g. 444444-1.')}</div></div>
    <div class="xs muted" style="text-align:center;margin-top:22px" data-notr>v${APP_VER} · build ${APP_BUILD} · ${flagE(S.country)} ${esc(C().iso)} · ${DB.cloud?'Cloud':'Local demo'}</div>
   </div>`};
-async function doLogin(){const pw=$('#lgPw').value;const e=$('#lgErr');if(!pw){e.textContent=L('请输入密码','Enter your password');return}
-  e.textContent='';try{await login(pw,LS.get('trust',true));afterLogin()}catch(x){e.textContent=x.message;$('#lgPw').select()}}
-function afterLogin(){if(ADMIN&&S.me.role!=='gm'){logout();S.view='login';render(false);setTimeout(()=>{const e=$('#lgErr');if(e)e.textContent=L('后台只允许总经理登录','Only the general manager can sign in here')},50);return}
-  S.hist=[];S.view=ADMIN?'mgmt':'home';Alerts.first();Alerts.low(false);render(true);Sync.run('boot');toast(L('欢迎，','Welcome, ')+nmP(S.me.name)+' · '+roleName(S.me.role),false)}
+async function doLogin(){const pw=$('#lgPw').value;const e=$('#lgErr');if(!S.lgRole){e.textContent=L('请先选择职位','Choose your position first');return}if(!pw){e.textContent=L('请输入密码','Enter your password');return}
+  e.textContent='';try{await login(pw,LS.get('trust',true),S.lgRole);afterLogin()}catch(x){e.textContent=x.message;$('#lgPw').select()}}
+function afterLogin(){
+  S.hist=[];S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first();Alerts.low(false);render(true);Sync.run('boot');toast(L('欢迎，','Welcome, ')+nmP(S.me.name)+' · '+roleName(S.me.role),false)}
 function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?')}</div><div class="sm muted" style="margin-top:6px">${DB.outbox.length?L(`还有 ${DB.outbox.length} 条记录未提交，下次登录后继续提交。`,`${DB.outbox.length} change(s) not yet submitted; they will be sent next time you sign in.`):L('退出后需要重新输入密码登录。','You will need your password to sign in again.')}</div>
   <div class="row gap" style="margin-top:18px"><button class="bigbtn ghost" onclick="closeSheet()">${L('取消','Cancel')}</button><button class="bigbtn red" onclick="closeSheet();logout();S.view='login';render(true)">${L('退出','Sign out')}</button></div>`)}
 
@@ -750,7 +750,7 @@ V.me=()=>{const me=S.me;const pf=Alerts.prefs();const row=meRow;const P=plan();
   const tg=k=>sw(pf[k],`const p=Alerts.prefs();p.${k}=!p.${k};LS.set('prefs_'+S.me.id,p);render(false)`);const sess=LS.get(SK,{});
   return `<div class="pad" style="padding-top:16px"><div class="row between"><div class="ptitle">${L('我的','Me')}</div><div class="row" style="gap:6px">${ctryBtn()}${langBtn()}</div></div>
    <div class="box" style="display:flex;gap:14px;align-items:center"><div class="av lg">${esc(nmP(me.name).slice(0,1))}</div><div style="min-width:0;flex:1"><div class="b" style="font-size:20px">${esc(nmP(me.name))}</div><div class="row gap6" style="margin-top:4px"><span class="badge ${ROLES[me.role].c}">${roleName(me.role)}</span><span class="xs muted">${L('账号','Account')} <b data-notr>${esc(me.code||'')}</b></span></div><div class="xs muted" style="margin-top:4px">${L('默认门店','Default store')}: ${esc(whName(me.wh))}</div></div></div>
-   ${me.role==='gm'?`<div class="sec-h">${L('后台管理','Management')}</div><div class="box" style="margin-top:0;padding:4px 16px">
+   ${can('mgmt')?`<div class="sec-h">${L('后台管理','Management')}</div><div class="box" style="margin-top:0;padding:4px 16px">
     ${row('users',L('账号与密码','Accounts & passwords'),L('各部门密码、新增账号、停用登录','Department passwords, new accounts, disable sign-in'),"go('m_users')")}
     ${row('wh',L('门店与 VIP','Stores & VIP'),(P.vip?L(`VIP · 可关联 ${P.limit} 个门店`,`VIP · up to ${P.limit} stores`):L('免费版 · 可关联 1 个门店','Free · 1 store'))+L(` · 已用 ${Math.min(allWh().length,activeWh().length)}`,` · using ${Math.min(allWh().length,activeWh().length)}`),"go('m_stores')")}
     ${row('gear',L('更多后台功能','More management'),L('商品资料、往来单位、系统设置、备份、日志','Products, partners, settings, backup, log'),"go('mgmt')")}</div>`:''}
@@ -800,16 +800,18 @@ V.mgmt=()=>hdr(L('后台管理','Management'))+`<div class="pad"><div class="box
   ${meRow('doc',L('操作日志','Activity log'),'',"go('m_log')")}</div></div>`;
 V.m_users=()=>{const us=DB.all('users');
   return hdr(L('账号与密码','Accounts & passwords'),`<button class="icbtn" onclick="acctSheet()">${ic('plus')}</button>`)+`<div class="pad">
-   <div class="note-g" style="margin-top:4px">${L('登录只需要密码。新增账号时输入“部门代码-序号”，如 444444-1 就是新增一个仓库主管，初始密码就是这个代码。','Sign-in uses the password only. To add an account enter “department code-number” — 444444-1 adds another warehouse manager, and that code is its starting password.')}</div>
+   <div class="note-g" style="margin-top:4px">${L('登录只需要密码，密码只在这里查看和修改。新增岗位账号时输入“部门代码-序号”，如 444444-1 就是新增一个仓库主管，初始密码就是这个代码。总经理可以授权其他账号使用后台。','Sign-in uses the password only; passwords are managed only here. To add a post enter “department code-number” — 444444-1 adds another warehouse manager with that code as its starting password. The general manager can grant backend access to other accounts.')}</div>
    ${ROLE_ORDER.map(r=>{const l=us.filter(u=>u.role===r).sort((a,b)=>String(a.code).localeCompare(String(b.code)));return `<div class="sec-h" style="margin-top:18px"><span class="row gap6"><span class="badge ${ROLES[r].c}">${roleName(r)}</span><span class="xs muted" data-notr>${ROLES[r].code}</span></span><a onclick="acctSheet(null,'${ROLES[r].code}-${l.length}')">+ ${L('新增','Add')}</a></div>
-    <div class="box" style="margin-top:0;padding:4px 16px">${l.map(u=>`<div class="li" onclick="acctSheet('${u.id}')"><div class="av" style="width:36px;height:36px;font-size:14px;${u.active===false?'background:#D6D3CC':''}">${esc(nmP(u.name).slice(0,1))}</div><div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(u.name))}</div><div class="xs muted"><span data-notr>${esc(u.code)}</span> · ${esc(whName(u.wh))}</div></div>${u.active===false?`<span class="badge b-grey">${L('已停用','Disabled')}</span>`:`<span class="badge b-lime">${L('可登录','Active')}</span>`}</div>`).join('')||`<div class="sm muted" style="padding:10px 0">${L('暂无账号','No accounts')}</div>`}</div>`}).join('')}</div>`};
-function acctSheet(id,code){const u=id?{...DB.get('users',id)}:{code:code||'',name:'',wh:activeWh()[0].id,active:true};S.eu=u;const r=roleOfCode(u.code);
+    <div class="box" style="margin-top:0;padding:4px 16px">${l.map(u=>`<div class="li" onclick="acctSheet('${u.id}')"><div class="av" style="width:36px;height:36px;font-size:14px;${u.active===false?'background:#D6D3CC':''}">${esc(nmP(u.name).slice(0,1))}</div><div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(u.name))}${u.admin&&u.role!=='gm'?` <span class="badge b-dark" style="padding:1px 7px">${L('后台','Backend')}</span>`:''}</div><div class="xs muted"><span data-notr>${esc(u.code)}</span> · ${esc(whName(u.wh))}</div></div>${u.active===false?`<span class="badge b-grey">${L('已停用','Disabled')}</span>`:`<span class="badge b-lime">${L('可登录','Active')}</span>`}</div>`).join('')||`<div class="sm muted" style="padding:10px 0">${L('暂无账号','No accounts')}</div>`}</div>`}).join('')}</div>`};
+function acctSheet(id,code){const u=id?{...DB.get('users',id)}:{code:code||'',name:'',wh:activeWh()[0].id,active:true};S.eu=u;const r=roleOfCode(u.code)||u.role;
+  if(S.me.role!=='gm'&&(r==='gm'||u.role==='gm'))return toast(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));
   openSheet(`<div class="sh">${id?L('修改账号','Edit account'):L('新增账号','New account')}</div>
    <div class="fld"><label>${L('账号代码（部门代码-序号）','Account code (department code-number)')}</label><input class="inp" style="background:var(--card);letter-spacing:2px" value="${esc(u.code)}" ${id?'disabled':''} data-notr oninput="S.eu.code=this.value.trim();const r=roleOfCode(this.value);$('#euR').innerHTML=r?'<span class=&quot;badge '+ROLES[r].c+'&quot;>'+roleName(r)+'</span>':'<span class=&quot;xs red&quot;>'+L('格式：如 444444-1','Format: e.g. 444444-1')+'</span>'"><div id="euR" style="margin-top:6px">${r?`<span class="badge ${ROLES[r].c}">${roleName(r)}</span>`:''}</div></div>
    <div class="fld"><label>${L('姓名','Name')}</label><input class="inp" style="background:var(--card)" value="${esc(nmP(u.name))}" oninput="S.eu.name=this.value"></div>
    <div class="fld"><label>${L('门店','Store')}</label><select class="inp" style="background:var(--card)" onchange="S.eu.wh=this.value">${activeWh().map(w=>`<option value="${w.id}" ${w.id===u.wh?'selected':''}>${esc(nm(w.n))}</option>`).join('')}</select></div>
    <div class="fld"><label>${id?L('重设密码（留空不改）','Reset password (leave empty to keep)'):L('初始密码（留空 = 账号代码）','Starting password (empty = account code)')}</label><input class="inp" style="background:var(--card)" id="euPw" type="text" autocomplete="new-password"></div>
    <div class="row between" style="margin-top:14px"><span class="sm b">${L('允许登录','Allow sign-in')}</span>${sw(u.active!==false,"S.eu.active=!(S.eu.active!==false);this.classList.toggle('on')")}</div>
+   ${S.me.role==='gm'&&r!=='gm'?`<div class="row between" style="margin-top:14px"><div><div class="sm b">${L('授权使用后台','Allow backend access')}</div><div class="xs muted">${L('可管理账号密码、门店、商品资料等（不能授权他人、不能改总经理账号）','Can manage accounts, stores, products… (cannot grant access or edit GM accounts)')}</div></div>${sw(!!u.admin,"S.eu.admin=!S.eu.admin;this.classList.toggle('on')")}</div>`:''}
    <div class="sm red" id="euE" style="margin-top:8px"></div><button class="bigbtn" style="width:100%;margin-top:12px" onclick="acctSave()">${L('保存','Save')}</button>`)}
 async function acctSave(){const u=S.eu,e=$('#euE');if(!nmP(u.name))return e.textContent=L('请填写姓名','Enter a name');
   try{await saveAccount(u,$('#euPw').value.trim());closeSheet();toast(L('已保存','Saved'),false);render(false)}catch(x){e.textContent=x.message}}
@@ -888,7 +890,7 @@ function bkDown(){const o={app:'jxc',ver:APP_VER,at:new Date().toISOString(),dat
 function bkUp(){const i=document.createElement('input');i.type='file';i.accept='.json,application/json';i.onchange=async()=>{try{const o=JSON.parse(await i.files[0].text());if(o.app!=='jxc')throw new Error('format');let n=0;
   KINDS.filter(k=>k!=='users').forEach(k=>(o.data[k]||[]).forEach(d=>{const ex=DB.get(k,d.id);if(!ex||(ex.u||0)<(d.u||0)){DB.put(k,{...d},{quiet:true});n++}}));DB.save();bc('reset');Sync.run();toast(L(`已恢复 ${n} 条记录`,`${n} records restored`),false);render(false)}catch(e){toast(L('文件格式不正确','Invalid backup file'))}};i.click()}
 async function bkDemo(){if(!confirm(L('确定？','Are you sure?')))return;if(!DB.cloud){await seedDemo();Object.keys(localStorage).filter(k=>k.startsWith('jxc_notes')).forEach(k=>localStorage.removeItem(k));bc('reset');
-    const u=DB.all('users').find(x=>x.role==='gm');if(u){S.me={...u};delete S.me.pw;const s=LS.get(SK,{});s.me=S.me;LS.set(SK,s)}toast(L('已恢复演示数据','Sample data restored'),false);tab('home');return}
+    const u=DB.get('users',S.me.id)||DB.all('users').find(x=>x.role==='gm');if(u){S.me={...u};delete S.me.pw;const s=LS.get(SK,{});s.me=S.me;LS.set(SK,s)}toast(L('已恢复演示数据','Sample data restored'),false);tab('home');return}
   const keep={...DB.d};await seedDemo();const add=[];['settings','wh','products','partners','moves','po','grn','so','sr','counts','ships','svc','fin'].forEach(k=>DB.d[k].forEach(d=>add.push({k,d})));
   KINDS.forEach(k=>DB.d[k]=keep[k]);add.forEach(r=>DB.put(r.k,r.d,{quiet:true}));Sync.run(true)}
 S.lgK='all';
@@ -929,7 +931,7 @@ async function boot(){
   /* 首次使用某种语言：先把界面文字翻好再显示（最多等 4 秒），不会先出英文再变外文 */
   if(!['zh','en'].includes(S.lang))await Promise.race([ensureLang(S.lang),new Promise(r=>setTimeout(r,4000))]);loadFx();setInterval(()=>loadFx(),3600e3);
   S.online=navigator.onLine;
-  if(restoreSession()&&(!ADMIN||S.me.role==='gm')){S.view=ADMIN?'mgmt':'home';Alerts.first()}else S.view='login';
+  if(restoreSession()){S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first()}else S.view='login';
   render(true);Sync.start();if(S.me)Sync.run('boot');
   /* 更新完成后，告诉用户更新了什么（只显示一次） */
   const from=LS.get('updFrom',null);if(from&&from!==APP_VER){LS.set('updFrom',null);setTimeout(async()=>{let v=null;try{v=await (await fetch('version.json?t='+Date.now(),{cache:'no-store'})).json()}catch(e){}

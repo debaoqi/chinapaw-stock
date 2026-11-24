@@ -1,6 +1,10 @@
 # 54 国语言 + 货币：模拟翻译接口与汇率接口，检查切换国家 / 语言 / 货币
 import asyncio,json,urllib.parse
 from playwright.async_api import async_playwright
+async def fillpw(pg,pw):
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.fill('#lgPw',pw)
+
 RATES={'result':'success','time_last_update_unix':1795500000,'rates':{'USD':1,'GHS':10.8,'XOF':566.2,'NGN':1540,'EGP':48.9,'KES':129.3,'ZAR':17.9}}
 async def tr(route):
     u=urllib.parse.urlparse(route.request.url);q=urllib.parse.parse_qs(u.query);tl=q['tl'][0];lines=q['q'][0].split('\n')
@@ -17,7 +21,7 @@ async def main():
         await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(3500)
         print('auto country/lang/currency:',await pg.evaluate("[S.country,S.lang,dispIso(),langsOf(S.country).join('/'),fxLive()]"))
         print('login title:',await pg.evaluate("document.querySelector('.fld label').textContent"),'| button:',await pg.evaluate("document.querySelector('.langbtn').textContent"))
-        await pg.fill('#lgPw','111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(1500)
+        await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(1500)
         await pg.screenshot(path='shots/v2_fr_home.png')
         print('fr hero:',await pg.evaluate("document.querySelector('.hero').innerText"),'| tab:',await pg.evaluate("document.querySelector('.tnav .tl').textContent"))
         print('money XOF:',await pg.evaluate("[money(1000),moneyBase(1000),usd(1000)]"))
