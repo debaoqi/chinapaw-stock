@@ -2,7 +2,7 @@
 import json, http.server, psycopg2, os, sys
 ROOT=sys.argv[1]
 def call(fn,args):
-    c=psycopg2.connect(host='/tmp/pg',port=5444,user='postgres',dbname='postgres');c.autocommit=True;cur=c.cursor()
+    c=psycopg2.connect(host='/tmp/pg',port=5444,user='postgres',dbname=os.environ.get('PGDB','postgres'));c.autocommit=True;cur=c.cursor()
     cur.execute('set role anon')
     names=list(args.keys());sql=f"select {fn}({','.join(n+':=%s' for n in names)})"
     vals=[json.dumps(v) if isinstance(v,(dict,list)) else v for v in args.values()]

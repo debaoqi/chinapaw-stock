@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "build": 1,
+  "version": "1.1.0",
+  "build": 2,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -9,7 +9,19 @@
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
-    "zh": ["首个版本：库存、扫码、盘点、采购、销售、退货、物流跟踪与服务、实时同步、离线开单、消息提醒、简易报表"],
-    "en": ["First release: stock, scanning, counts, purchasing, sales, returns, logistics tracking & services, live sync, offline orders, alerts, reports"]
+    "zh": [
+      "非洲 54 国通用：自动匹配手机语言、所在国家货币，支持美元实时汇率",
+      "只用密码登录：总经理 111111、采购主管 222222、销售经理 333333、仓库主管 444444、会计 555555、出纳 666666",
+      "各部门各司其职：新增财务（应收、应付、收款核对、付款审批、资金日记账），退货由仓库确认",
+      "总经理后台：账号与密码（如 444444-1 新增库管）、停用登录、门店与 VIP",
+      "修复画面闪动；导出 Excel 报表带边框；新增网站端 web.html"
+    ],
+    "en": [
+      "All 54 African countries: follows your phone language and local currency, with live USD rates",
+      "Password-only sign-in by department: GM 111111, purchasing 222222, sales 333333, warehouse 444444, accountant 555555, cashier 666666",
+      "Each department in its own lane: new finance module; returns confirmed by the warehouse",
+      "GM management: accounts & passwords (e.g. 444444-1), disable sign-in, stores & VIP",
+      "Fixed screen flicker; bordered Excel exports; new website edition web.html"
+    ]
   }
 }

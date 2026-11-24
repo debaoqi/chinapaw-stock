@@ -204,3 +204,59 @@ textarea.inp{min-height:76px;resize:vertical}
 .demo button b{display:block;font-size:13.5px}
 #pwaBar{position:sticky;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;display:flex;justify-content:center;padding:6px 20px 0;pointer-events:none}
 #pwaBar button{pointer-events:auto;border-radius:999px;background:#161616;color:#fff;font-weight:800;font-size:14px;padding:12px 20px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 22px rgba(0,0,0,.22)}
+/* ===== v1.1：总经理部门进展 ===== */
+.dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.dgrid .box{min-width:0}.dgrid .badge{max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
+.dgrid .box:last-child:nth-child(odd){grid-column:1/3}
+/* ===== 阿拉伯语从右到左 ===== */
+[dir=rtl] .cols>div{padding-right:0;margin-right:0;padding-left:6px;margin-left:7px;border-right:0;border-left:1px solid #D9CFB8}
+[dir=rtl] .cols>div:last-child{border:0;margin:0}
+[dir=rtl] svg.i{transform:scaleX(-1)}
+/* ===== 网页版（web.html / 后台）：左侧导航 + 宽屏内容 ===== */
+body.web{display:block;background:#EFEBE2;background-image:none}
+body.web .phone{width:100%!important;height:100vh!important;height:100dvh!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:var(--bg)}
+body.web .sbar{display:none!important}
+body.web .phone .screen{top:0!important}
+body.web.authed .screen{left:248px}
+body.web .tnav{position:absolute;top:0;bottom:0;left:0;right:auto;width:248px;flex-direction:column;align-items:stretch;background:#161616;border:0;padding:18px 12px;gap:2px;overflow-y:auto;backdrop-filter:none}
+body.web .tnav button{flex:none;flex-direction:row;gap:12px;padding:11px 12px;border-radius:14px;color:#CFCAC0;justify-content:flex-start}
+body.web .tnav button .ti{width:26px;height:24px}
+body.web .tnav button .tl{font-size:14.5px}
+body.web .tnav button.on{background:#0B7A4B;color:#fff}
+body.web .tnav .cnt{top:-4px;right:-6px}
+body.web .tnav .wbrand{display:flex;align-items:center;gap:10px;color:#fff;font-size:16px;padding:4px 8px 16px;min-width:0}
+body.web .tnav .wfoot{margin-top:auto;padding:14px 6px 0;color:#CFCAC0}
+body.web .tnav .wfoot .langbtn,body.web .tnav .wfoot .syncchip{box-shadow:none}
+body.web #screen>.fade>.pad,body.web #screen>.fade>.hdr,body.web #screen>.fade>.offbar,body.web #screen>.fade>.updbar{max-width:1080px;margin-left:auto;margin-right:auto}
+body.web #screen .pad{padding:20px 28px}
+body.web #screen .pad div:has(> .wc){display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px;align-items:start}
+body.web #screen .pad div:has(> .wc)>.wc{margin:0}
+body.web #screen .pad div:has(> .wc)>.empty{grid-column:1/-1}
+body.web .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+body.web .dgrid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+body.web .dgrid .box:last-child:nth-child(odd){grid-column:auto}
+body.web .wtiles{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+body.web .hero{font-size:34px}
+body.web .bbar{left:248px;justify-content:flex-end;padding-right:calc(max(28px,(100vw - 248px - 1080px)/2 + 28px))}
+body.web .bbar>.bigbtn{flex:0 1 240px}
+body.web:not(.authed) .bbar{left:0}
+body.web .sheet{left:50%;right:auto;width:min(580px,100%);transform:translate(-50%,105%);border-radius:30px 30px 0 0}
+body.web .sheet.on{transform:translate(-50%,0)}
+body.web.authed .sheet{left:calc(50% + 124px)}
+body.web .toast{bottom:40px}
+body.web.authed .toast{left:calc(50% + 124px)}
+body.web .banner{left:auto;right:24px;width:380px;top:18px}
+body.web:not(.authed) #screen>.fade{max-width:460px;margin:0 auto;padding-top:24px}
+body.web:not(.authed) .login-hero{border-radius:36px}
+body.web .tnav::-webkit-scrollbar{display:none}
+@media (max-width:820px){
+  body.web.authed .screen{left:0}
+  body.web .tnav{top:auto;width:auto;right:0;flex-direction:row;background:rgba(251,249,245,.94);padding:6px 4px;overflow-x:auto}
+  body.web .tnav button{flex-direction:column;gap:3px;color:#111;padding:4px 6px;flex:1 0 auto}
+  body.web .tnav button .tl{font-size:11.5px}
+  body.web .tnav button.on{background:none;color:#0B7A4B}
+  body.web .tnav .wbrand,body.web .tnav .wfoot{display:none}
+  body.web .bbar{left:0;padding-right:20px}
+  body.web.authed .sheet,body.web.authed .toast{left:50%}
+  body.web #screen .pad{padding:14px 16px}
+}

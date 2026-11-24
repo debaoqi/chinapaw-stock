@@ -1,25 +1,19 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.0.0',APP_BUILD=1;
+const APP_VER='1.1.0',APP_BUILD=2;
 const CFG=window.JXC_CONFIG||{};
 const SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const LS={get(k,d){try{const v=localStorage.getItem('jxc_'+k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem('jxc_'+k,JSON.stringify(v))}catch(e){}},
   del(k){try{localStorage.removeItem('jxc_'+k)}catch(e){}}};
-const S={lang:'zh',view:'login',params:{},hist:[],me:null,online:navigator.onLine,syncing:false};
+const S={lang:'zh',country:'GH',curMode:'local',view:'login',params:{},hist:[],me:null,online:navigator.onLine,syncing:false};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=p=>(p||'')+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const isNative=()=>!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 
-/* ---------- 语言：中文 / English（与 ChinaPaw 相同：按钮只显示目标语言，中文时显示 EN，英文时显示 中） ---------- */
-function detectLang(){const ls=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'en'];
-  for(const l of ls){const c=(l||'').slice(0,2).toLowerCase();if(c==='zh')return 'zh';if(c==='en')return 'en'}return 'en'}
-const L=(zh,en)=>S.lang==='zh'?zh:en;
-const nm=v=>v==null?'':typeof v==='object'?(v[S.lang]||v.zh||v.en||''):String(v);
-function langBtn(){return `<button class="langbtn" data-notr onclick="setLang('${S.lang==='zh'?'en':'zh'}')" title="${S.lang==='zh'?'English':'中文'}">${S.lang==='zh'?'EN':'中'}</button>`}
-function setLang(l){S.lang=l;document.documentElement.lang=l==='zh'?'zh-CN':'en';LS.set('lang',l);try{$('#toast').classList.remove('on')}catch(e){}document.title=L('华宝进销存','ChinaPaw Stock');if(window.render)render(false)}
+/*I18N*/
 
 /* ---------- 图标 ---------- */
 const ICONS={
@@ -72,11 +66,6 @@ const ICONS={
 const ic=(n,s)=>`<svg class="i" viewBox="0 0 24 24"${s?` style="width:${s}px;height:${s}px"`:''}>${ICONS[n]||''}</svg>`;
 
 /* ---------- 格式化 ---------- */
-const CUR=()=>(DB.get('settings','app')||{}).cur||'GH₵';
-const n2=n=>(Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
-const money=n=>CUR()+' '+(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const numK=n=>{n=+n||0;return Math.abs(n)>=1e6?(n/1e6).toFixed(2)+'M':Math.abs(n)>=1e4?(n/1e3).toFixed(1)+'k':n2(n)};
-const moneyK=n=>{n=+n||0;return CUR()+' '+(Math.abs(n)>=1e6?(n/1e6).toFixed(2)+'M':Math.abs(n)>=1e4?(n/1e3).toFixed(1)+'k':n2(n))};
 const pad2=n=>String(n).padStart(2,'0');
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fdate(t,withTime=true){if(!t)return '';const d=new Date(t);const tm=withTime?' '+pad2(d.getHours())+':'+pad2(d.getMinutes()):'';
@@ -86,19 +75,29 @@ function ago(t){const s=(Date.now()-t)/1000;if(s<60)return L('刚刚','just now'
   if(s<86400)return Math.floor(s/3600)+L(' 小时前',' h ago');if(s<172800)return L('昨天','yesterday');return fdate(t,false)}
 const dayStart=(t=Date.now())=>{const d=new Date(t);d.setHours(0,0,0,0);return +d};
 
-/* ---------- 角色权限 ---------- */
+/* ---------- 职能部门与权限：各司其职、互不越界 ----------
+   每个部门有固定的“部门代码”（也是初始密码）；新增同部门账号用“代码-序号”，如 444444-1 = 第 2 个仓库主管账号。 */
 const ROLES={
- admin:{zh:'管理员',en:'Admin',c:'b-dark',p:'*'},
- buyer:{zh:'采购员',en:'Purchaser',c:'b-blue',p:['stock','po','po_ret','logi','report','cost','partner']},
- sales:{zh:'销售员',en:'Sales',c:'b-gold',p:['stock','so','so_ret','logi','report','partner']},
- keeper:{zh:'库管',en:'Warehouse keeper',c:'b-green',p:['stock','po_recv','po_ret','so_ship','so_ret','take','logi','report','cost']},
- viewer:{zh:'查看者',en:'Viewer',c:'b-grey',p:['stock','report']}
+ gm:{zh:'总经理',en:'General Manager',code:'111111',c:'b-dark',p:'*'},
+ buyer:{zh:'采购主管',en:'Purchasing Manager',code:'222222',c:'b-blue',p:['stock','po','pr','logi','report','cost','sup']},
+ sales:{zh:'销售经理',en:'Sales Manager',code:'333333',c:'b-gold',p:['stock','so','sr','logi','report','cus']},
+ keeper:{zh:'仓库主管',en:'Warehouse Manager',code:'444444',c:'b-green',p:['stock','po_recv','so_ship','take','pr_exec','sr_exec','logi','report']},
+ acct:{zh:'会计',en:'Accountant',code:'555555',c:'b-purple',p:['stock','cost','report','profit','fin','fin_verify','fin_approve']},
+ cashier:{zh:'出纳',en:'Cashier',code:'666666',c:'b-orange',p:['fin','fin_receive','fin_pay']}
 };
-function can(p,u){u=u||S.me;if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+const ROLE_ORDER=['gm','buyer','sales','keeper','acct','cashier'];
+function can(p,u){u=u||S.me;if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
+/* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
+function roleOfCode(code){const m=/^(\d{6})(?:-(\d{1,3}))?$/.exec(String(code||'').trim());if(!m)return null;return ROLE_ORDER.find(k=>ROLES[k].code===m[1])||null}
+/* 门店：免费版 1 个，VIP 可关联 3 个或更多（平台后台调整） */
+const plan=()=>Object.assign({vip:false,limit:1},((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).plan||{});
+const allWh=()=>DB.all('wh');
+const activeWh=()=>allWh().slice(0,Math.max(1,plan().vip?plan().limit:1));
+const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','users'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   load(){const s=LS.get('db',null);KINDS.forEach(k=>this.d[k]=(s&&s[k])||[]);this.outbox=LS.get('outbox',[]);this.seq=LS.get('seq',0);this.lastSync=LS.get('lastSync',0);this.ver++},
@@ -128,7 +127,7 @@ async function rpc(fn,args){const r=await fetch(CFG.supabaseUrl.replace(/\/$/,''
 const Sync={timer:null,
   async run(force){
     if(S.syncing)return;if(!navigator.onLine){S.online=false;window.syncUI&&syncUI();return}
-    S.syncing=true;window.syncUI&&syncUI();
+    S.syncing=true;window.syncUI&&syncUI();const v0=DB.ver;
     try{
       if(DB.cloud&&S.token){
         for(let b=0;DB.outbox.length&&b<25;b++){const ops=DB.outbox.slice(0,200).map(o=>({k:o.k,id:o.id,d:{...o.d,_q:undefined}}));
@@ -146,7 +145,9 @@ const Sync={timer:null,
       }
       DB.lastSync=Date.now();DB.save();S.online=true;S.syncErr='';
     }catch(e){console.error(e);S.syncErr=String(e.message||e);if(force===true)toast(L('同步失败：','Sync failed: ')+S.syncErr)}
-    finally{S.syncing=false;window.syncUI&&syncUI();if(force===true&&!S.syncErr)toast(L('已同步','Synced'));if(window.softRender)softRender()}},
+    finally{S.syncing=false;window.syncUI&&syncUI();if(force===true&&!S.syncErr)toast(L('已同步','Synced'));
+      /* 只有数据真的变了才刷新画面（原来每次后台同步都整页重画，造成闪动） */
+      if(DB.ver!==v0&&window.softRender)softRender()}},
   start(){clearInterval(this.timer);const tick=()=>{if(document.visibilityState==='visible')this.run()};
     this.timer=setInterval(tick,DB.cloud?8000:20000);
     addEventListener('online',()=>{S.online=true;toast(L('网络已恢复，正在自动提交','Back online, submitting…'));this.run();window.syncUI&&syncUI();window.render&&render(false)});
@@ -225,19 +226,82 @@ async function downloadFile(name,text,type){const blob=new Blob(['﻿'+text],{ty
   try{if(isNative()&&navigator.canShare){const f=new File([blob],name,{type:blob.type});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return}}}catch(e){}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);toast(L('已开始下载：','Downloading: ')+name)}
 const csv=rows=>rows.map(r=>r.map(c=>{c=c==null?'':String(c);return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')).join('\n');
+/* ---------- 导出 Excel（.xlsx）：带边框、表头底色、列宽，打开即可打印 ---------- */
+const _CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=_CRC[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function zipBlob(files,type){const enc=new TextEncoder();const parts=[],cd=[];let off=0;
+  files.forEach(f=>{const nb=enc.encode(f.name),data=typeof f.data==='string'?enc.encode(f.data):f.data,crc=crc32(data),sz=data.length;
+    const h=new DataView(new ArrayBuffer(30));[[0,0x04034b50,4],[4,20,2],[6,0x0800,2],[8,0,2],[10,0,2],[12,0x21,2],[14,crc,4],[18,sz,4],[22,sz,4],[26,nb.length,2],[28,0,2]].forEach(([o,v,n])=>n===4?h.setUint32(o,v,true):h.setUint16(o,v,true));
+    parts.push(new Uint8Array(h.buffer),nb,data);
+    const e=new DataView(new ArrayBuffer(46));[[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0800,2],[10,0,2],[12,0,2],[14,0x21,2],[16,crc,4],[20,sz,4],[24,sz,4],[28,nb.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,off,4]].forEach(([o,v,n])=>n===4?e.setUint32(o,v,true):e.setUint16(o,v,true));
+    cd.push(new Uint8Array(e.buffer),nb);off+=30+nb.length+sz});
+  const cs=cd.reduce((a,b)=>a+b.length,0);const z=new DataView(new ArrayBuffer(22));z.setUint32(0,0x06054b50,true);z.setUint16(8,files.length,true);z.setUint16(10,files.length,true);z.setUint32(12,cs,true);z.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(z.buffer)],{type})}
+const xesc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+const colL=n=>{let s='';n++;while(n){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26)}return s};
+/* sheets: [{name,title,sub,head:[...],rows:[[...]],money:[列序号]}] */
+function xlsxBlob(sheets){
+  const sx=sheets.map((s,si)=>{const W=s.head.length;const widths=s.head.map((h,i)=>Math.min(48,Math.max(8,...[h,...s.rows.map(r=>r[i])].map(v=>{v=String(v==null?'':v);let w=0;for(const ch of v)w+=/[⺀-￿]/.test(ch)?2:1.1;return w+2}))));
+    let r=1,rows='';const cell=(c,v,st)=>{const ref=colL(c)+r;if(typeof v==='number'&&isFinite(v))return `<c r="${ref}" s="${st}"><v>${v}</v></c>`;return `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xesc(v)}</t></is></c>`};
+    rows+=`<row r="${r}" ht="24" customHeight="1">${cell(0,s.title,4)}</row>`;r++;
+    rows+=`<row r="${r}">${cell(0,s.sub||'',6)}</row>`;r++;
+    rows+=`<row r="${r}" ht="22" customHeight="1">${s.head.map((h,i)=>cell(i,h,1)).join('')}</row>`;const hr=r;r++;
+    s.rows.forEach(row=>{rows+=`<row r="${r}">${s.head.map((h,i)=>{const v=row[i];const isN=typeof v==='number';return cell(i,v==null?'':v,isN?((s.money||[]).includes(i)?3:5):2)}).join('')}</row>`;r++});
+    if(s.total){rows+=`<row r="${r}">${s.head.map((h,i)=>{const v=s.total[i];return v===undefined||v===null||v===''?cell(i,'',7):typeof v==='number'?cell(i,v,(s.money||[]).includes(i)?8:7):cell(i,v,7)}).join('')}</row>`;r++}
+    const last=colL(W-1);
+    return {name:`xl/worksheets/sheet${si+1}.xml`,data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="${hr}" topLeftCell="A${hr+1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w.toFixed(1)}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData><mergeCells count="2"><mergeCell ref="A1:${last}1"/><mergeCell ref="A2:${last}2"/></mergeCells><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup orientation="${W>6?'landscape':'portrait'}" fitToWidth="1" fitToHeight="0"/></worksheet>`}});
+  const bd='<border><left style="thin"><color rgb="FF8A8478"/></left><right style="thin"><color rgb="FF8A8478"/></right><top style="thin"><color rgb="FF8A8478"/></top><bottom style="thin"><color rgb="FF8A8478"/></bottom><diagonal/></border>';
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>
+<fonts count="5"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font><font><b/><sz val="15"/><name val="Arial"/></font><font><sz val="10"/><color rgb="FF6E6656"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B7A4B"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF1ECDF"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>${bd}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="164" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const sn=(s,i)=>xesc(String(s.name||('Sheet'+(i+1))).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31));
+  const files=[{name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`},
+   {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+   {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s,i)=>`<sheet name="${sn(s,i)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets><definedNames>${sheets.map((s,i)=>`<definedName name="_xlnm.Print_Titles" localSheetId="${i}">'${sn(s,i).replace(/'/g,"''")}'!$3:$3</definedName>`).join('')}</definedNames></workbook>`},
+   {name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+   {name:'xl/styles.xml',data:styles},...sx];
+  return zipBlob(files,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+async function downloadBlob(name,blob){
+  try{if(isNative()&&navigator.canShare){const f=new File([blob],name,{type:blob.type});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return}}}catch(e){}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);toast(L('已开始下载：','Downloading: ')+name,false)}
+function exportXlsx(file,sheets){const co=nmP(((DB.get('settings','app')||{}).co))||BRAND();
+  sheets.forEach(s=>{s.sub=s.sub||`${co} · ${L('导出时间','Exported')} ${fday(Date.now())} ${new Date().toTimeString().slice(0,5)} · ${L('货币','Currency')} ${dispIso()}${S.me?' · '+nmP(S.me.name):''}`});
+  downloadBlob(file+'_'+fday(Date.now())+'.xlsx',xlsxBlob(sheets))}
 
-/* ---------- 账号：本机模式用 SHA-256 摘要；云端模式由数据库 crypt() 校验 ---------- */
-async function pwHash(phone,pw){const b=new TextEncoder().encode('jxc|'+phone+'|'+pw);const h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-async function login(phone,pw,trust){phone=String(phone).replace(/\s/g,'');
-  if(DB.cloud){const r=await rpc('jxc_login',{p_phone:phone,p_pw:pw,p_device:navigator.userAgent.slice(0,120)});if(!r||!r.token)throw new Error(L('手机号或密码错误','Wrong phone or password'));
-    S.token=r.token;S.me=r.user}
-  else{const u=DB.all('users').find(x=>x.phone===phone&&x.active!==false);if(!u||u.pw!==await pwHash(phone,pw))throw new Error(L('手机号或密码错误','Wrong phone or password'));S.me={...u};delete S.me.pw}
-  LS.set('lastPhone',phone);LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
+/* ---------- 账号：只用密码登录（不需要手机号）。密码在全公司唯一，系统据此识别是哪个部门的哪个账号 ---------- */
+async function pwHash(id,pw){const b=new TextEncoder().encode('jxc|'+id+'|'+pw);const h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function findByPw(pw,exceptId){for(const u of DB.all('users')){if(u.id!==exceptId&&u.pw===await pwHash(u.id,pw))return u}return null}
+async function login(pw,trust){pw=String(pw||'').trim();const lk=LS.get('lock',{n:0,until:0});
+  if(lk.until>Date.now())throw new Error(L(`尝试次数过多，请 ${Math.ceil((lk.until-Date.now())/1000)} 秒后再试`,`Too many attempts. Try again in ${Math.ceil((lk.until-Date.now())/1000)}s`));
+  try{if(DB.cloud){const r=await rpc('jxc_login',{p_pw:pw,p_device:(LS.get('dev',null)||(LS.set('dev',uid('d')),LS.get('dev','')))+' '+navigator.userAgent.slice(0,90)});if(!r||!r.token)throw new Error(r&&r.error?r.error.split(' / ')[S.lang==='zh'?0:1]||r.error:'');S.token=r.token;S.me=r.user}
+    else{const u=await findByPw(pw);if(!u||u.active===false)throw 0;S.me={...u};delete S.me.pw}}
+  catch(e){lk.n++;if(lk.n>=5){lk.until=Date.now()+60e3;lk.n=0}LS.set('lock',lk);throw new Error(e&&e.message&&DB.cloud?e.message:L('密码错误或账号已停用','Wrong password or account disabled'))}
+  LS.set('lock',{n:0,until:0});LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
 function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;if(Date.now()-s.t>30*864e5)return false;S.me=s.me;S.token=s.token;
   if(!DB.cloud){const u=DB.get('users',S.me.id);if(!u||u.active===false)return false;S.me={...u};delete S.me.pw}return true}
-function logout(){const s=LS.get(SK,null);if(DB.cloud&&S.token)rpc('jxc_logout',{p_token:S.token}).catch(()=>{});LS.del(SK);S.me=null;S.token=null}
+function logout(){if(DB.cloud&&S.token)rpc('jxc_logout',{p_token:S.token}).catch(()=>{});LS.del(SK);S.me=null;S.token=null}
 async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:S.token,p_old:old,p_new:nw});return}
-  const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.phone,old))throw new Error(L('原密码不正确','Current password is wrong'));DB.put('users',{...u,pw:await pwHash(u.phone,nw)})}
+  const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
+  if(await findByPw(nw,u.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
+/* 管理：新增 / 修改账号（总经理在后台操作） */
+async function saveAccount(a,newPw){const role=roleOfCode(a.code);if(!role)throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
+  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:a.name,wh:a.wh,active:a.active!==false},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
+  if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
+  if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
+  const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?a.code:null);
+  if(pw){if(pw.length<6)throw new Error(L('密码至少 6 位','At least 6 characters'));if(await findByPw(pw,d.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));d.pw=await pwHash(d.id,pw)}
+  else d.pw=(DB.get('users',d.id)||{}).pw;DB.put('users',d)}
 
 /* ================= 演示数据（加纳建材贸易场景，与 ChinaPaw 同一市场） ================= */
 function ean(base){const d=base.split('').map(Number);let s=0;d.forEach((x,i)=>s+=x*(i%2?3:1));return base+((10-s%10)%10)}
@@ -245,7 +309,7 @@ function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(see
 async function seedDemo(){
   const R=rng(20261124),pick=a=>a[Math.floor(R()*a.length)],now=Date.now(),D=864e5;
   const d={};KINDS.forEach(k=>d[k]=[]);
-  d.settings=[{id:'app',cur:'GH₵',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1.2,28,45],air:[6.5,5,9],road:[0.35,1,3],express:[12,3,6]},lowRule:'min'}];
+  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1.2,28,45],air:[6.5,5,9],road:[0.35,1,3],express:[12,3,6]},lowRule:'min',plan:{vip:true,limit:3}}];
   d.wh=[{id:'W1',n:{zh:'特马总仓',en:'Tema Main Warehouse'},city:{zh:'特马',en:'Tema'}},{id:'W2',n:{zh:'阿克拉门店仓',en:'Accra Shop Store'},city:{zh:'阿克拉',en:'Accra'}},{id:'W3',n:{zh:'库马西仓',en:'Kumasi Warehouse'},city:{zh:'库马西',en:'Kumasi'}}];
   const P=[['水泥 42.5R 50kg','Cement 42.5R 50kg','包','bag',78,92,300,4000,1,'建材','Building'],
    ['螺纹钢 Φ12 12m','Rebar Φ12 12m','根','pc',95,118,150,2500,0,'钢材','Steel'],['螺纹钢 Φ16 12m','Rebar Φ16 12m','根','pc',168,205,100,1500,0,'钢材','Steel'],
@@ -266,9 +330,11 @@ async function seedDemo(){
    {id:'C3',type:'cus',n:{zh:'华程路桥加纳项目部',en:'Huacheng Road & Bridge (Ghana)'},phone:'054 222 8899',city:{zh:'塔科拉迪',en:'Takoradi'}},
    {id:'C4',type:'cus',n:{zh:'夸梅装饰',en:'Kwame Decor'},phone:'027 333 4455',city:{zh:'库马西',en:'Kumasi'}},
    {id:'C5',type:'cus',n:{zh:'库马西建材城',en:'Kumasi Building Mart'},phone:'050 777 1212',city:{zh:'库马西',en:'Kumasi'}}];
-  const U=[['U1','admin',{zh:'王经理',en:'Manager Wang'},'0240000001','W1'],['U2','buyer',{zh:'李采购',en:'Li (Purchasing)'},'0240000002','W1'],
-   ['U3','sales',{zh:'阿玛·门萨',en:'Ama Mensah'},'0240000003','W2'],['U4','keeper',{zh:'科乔·阿散蒂',en:'Kojo Asante'},'0240000004','W1'],['U5','viewer',{zh:'陈会计',en:'Chen (Accounts)'},'0240000005','W1']];
-  for(const u of U)d.users.push({id:u[0],role:u[1],name:u[2],phone:u[3],wh:u[4],active:true,pw:await pwHash(u[3],'123456')});
+  /* 部门账号：初始密码 = 部门代码（总经理 111111 … 出纳 666666），444444-1 是新增的第 2 个仓库主管 */
+  const U=[['U1','gm','111111',{zh:'王总',en:'GM Wang'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
+   ['U4','keeper','444444',{zh:'科乔·阿散蒂',en:'Kojo Asante'},'W1'],['U5','acct','555555',{zh:'陈会计',en:'Chen (Accounts)'},'W1'],['U6','cashier','666666',{zh:'阿贝娜',en:'Abena Owusu'},'W1'],
+   ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3']];
+  for(const u of U)d.users.push({id:u[0],role:u[1],code:u[2],name:u[3],wh:u[4],active:true,pw:await pwHash(u[0],u[2])});
   const mv=(o)=>d.moves.push({id:'dm'+d.moves.length,u:o.t,by:o.by||'U4',...o});
   const t0=now-34*D;const exp=(days)=>fday(now+days*D);
   /* 按先到期先出扣减批次 */
@@ -308,7 +374,7 @@ async function seedDemo(){
   d.so.push(so4);so4.items.forEach(it=>seedOut(it.pid,'W1',it.qty,now-D,so4.id));
   /* 销售退货 */
   const ret=d.so.find(s=>s.status==='done'&&s.items.some(i=>i.qty>=10));if(ret){const it=ret.items.find(i=>i.qty>=10);const q=Math.max(2,Math.floor(it.qty/5));
-    d.sr.push({id:'sr1',no:'SR'+fday(now-2*D).slice(2).replace(/-/g,'')+'-401',so:ret.id,wh:ret.wh,t:now-2*D,u:now-2*D,by:'U3',items:[{pid:it.pid,qty:q}],reason:{zh:'包装破损',en:'Damaged packaging'}});
+    d.sr.push({id:'sr1',no:'SR'+fday(now-2*D).slice(2).replace(/-/g,'')+'-401',so:ret.id,wh:ret.wh,t:now-2*D,u:now-2*D,by:'U3',items:[{pid:it.pid,qty:q}],reason:{zh:'包装破损',en:'Damaged packaging'},status:'done',xby:'U4',xt:now-2*D});
     it.ret=q;mv({t:now-2*D,pid:it.pid,wh:ret.wh,qty:q,type:'so_ret',ref:'sr1'})}
   /* 盘点（待审核） */
   const q2=pid=>d.moves.filter(m=>m.pid===pid&&m.wh==='W2').reduce((a,m)=>a+m.qty,0);
@@ -326,9 +392,17 @@ async function seedDemo(){
     ev:[{t:now-9*D,st:'picked',place:{zh:'阿克拉',en:'Accra'},note:''},{t:now-8*D,st:'delivering',place:{zh:'塔科拉迪',en:'Takoradi'},note:''},{t:now-7*D,st:'delivered',place:{zh:'塔科拉迪',en:'Takoradi'},note:{zh:'客户已签收',en:'Signed by customer'}}]}];
   d.ships[2].status='exception';
   d.svc=[{id:'bk1',no:'BK'+fday(now-D).slice(2).replace(/-/g,'')+'-701',type:'pickup',mode:'road',from:{zh:'特马总仓',en:'Tema Main Warehouse'},to:{zh:'塔科拉迪',en:'Takoradi'},date:fday(now+D),weight:12000,vol:18,note:{zh:'需要 20 吨平板车',en:'Need a 20-ton flatbed'},status:'new',t:now-D,u:now-D,by:'U3'}];
+  /* 财务：已完成订单大多已收款；采购付款有已付、已批准待付 */
+  const tot=x=>(x.items||[]).reduce((a,i)=>a+i.qty*i.price,0);let fn=0;
+  d.so.filter(s=>s.status==='done').forEach((s,k)=>{if(k%5===4)return;const amt=k%7===3?Math.round(tot(s)/2):tot(s);d.fin.push({id:'f'+(++fn),type:'rcv',ref:s.id,refKind:'so',amount:amt,method:['cash','bank','momo'][k%3],status:k%4===0?'recorded':'verified',t:s.t+2*36e5,by:'U6',vby:k%4===0?'':'U5'})});
+  d.so.filter(s=>s.status==='shipped').forEach(s=>d.fin.push({id:'f'+(++fn),type:'rcv',ref:s.id,refKind:'so',amount:Math.round(tot(s)*0.3),method:'momo',status:'recorded',t:now-6*36e5,by:'U6',note:{zh:'定金',en:'Deposit'}}));
+  d.po.filter(p=>p.status==='done').forEach((p,k)=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:tot(p),method:'bank',status:'paid',t:p.u+3*864e5,by:'U5',pby:'U6',pt:p.u+3*864e5}));
+  d.po.filter(p=>p.status==='received').forEach(p=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:Math.round(tot(p)*0.5),method:'bank',status:'approved',t:now-5*36e5,by:'U5',note:{zh:'首付 50%',en:'50% first payment'}}));
+  d.fin.unshift({id:'f0',type:'rcv',ref:'',refKind:'open',amount:450000,method:'bank',status:'verified',t:t0,by:'U6',vby:'U5',note:{zh:'期初资金',en:'Opening balance'}});
+  d.fin.forEach(f=>f.u=f.t);
   [ 'moves','so','po','grn','sr','counts','ships','svc'].forEach(k=>d[k].forEach(x=>{if(!x.u)x.u=x.t||now}));
   KINDS.forEach(k=>d[k].forEach(x=>{if(!x.u)x.u=now}));
-  KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save();LS.set('seeded',1);
+  KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save();LS.set('seeded',1);LS.set('seeded2',1);
 }
 
 /* ---------- 版本更新（与 ChinaPaw 相同：读取 version.json，网页版一键刷新，安装包版在 App 内下载安装） ---------- */
@@ -346,7 +420,7 @@ async function checkUpdate(manual){if(UPD.busy)return;UPD.busy=true;
   catch(e){if(manual)toast(L('检查更新失败，请检查网络','Update check failed, check your network'))}
   finally{UPD.busy=false;window.syncUI&&syncUI()}}
 function showUpd(v,kind){const force=!!v.force||kind==='apk'&&v.forceNative;
-  openSheet(`<div class="row gap"><img src="logo.svg" class="logo" style="width:52px;height:52px;border-radius:16px"><div><div class="sh">${L('发现新版本','New version available')}</div>
+  openSheet(`<div class="row gap"><img src="${LOGO}" class="logo" style="width:52px;height:52px;border-radius:16px"><div><div class="sh">${L('发现新版本','New version available')}</div>
    <div class="sm muted">v${APP_VER} → <b style="color:var(--ink)">v${esc(v.version)}</b>${v.date?' · '+esc(v.date):''}</div></div></div>${updNotes(v)}
    ${kind==='apk'?`<div class="note-y" style="margin-top:14px">${L('这次更新需要安装新的安装包，下载后点“安装”即可，数据不会丢失。','This update needs a new app package. Download and tap Install — your data stays.')}</div>`:''}
    ${force?`<div class="xs red" style="margin-top:10px">${L('此版本为必要更新','This update is required')}</div>`:''}
@@ -363,7 +437,7 @@ const mb=b=>(b/1048576).toFixed(1)+' MB';
 function hasUpdater(){try{return !!(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.AppUpdater)}catch(e){return false}}
 function updSheet(){const s=UPX.st;const bar=`<div style="height:12px;border-radius:8px;background:#E7E1D4;overflow:hidden;margin-top:16px"><div id="updBar" style="height:100%;width:${Math.max(3,UPX.pct)}%;background:var(--green);transition:width .25s"></div></div>
    <div class="row between sm" style="margin-top:8px"><span id="updPct" class="b">${UPX.pct>=0?UPX.pct+'%':''}</span><span id="updSz" class="muted">${UPX.total?mb(UPX.done)+' / '+mb(UPX.total):''}</span></div>`;
-  const head=`<div class="row gap"><img src="logo.svg" class="logo" style="width:52px;height:52px;border-radius:16px"><div><div class="sh">${L('华宝进销存','ChinaPaw Stock')} v${esc((UPD.remote||{}).version||'')}</div><div class="sm muted">${s==='dl'?L('正在下载…','Downloading…'):s==='ready'?L('下载完成','Downloaded'):s==='perm'?L('需要允许安装','Allow installs'):L('下载失败','Download failed')}</div></div></div>`;
+  const head=`<div class="row gap"><img src="${LOGO}" class="logo" style="width:52px;height:52px;border-radius:16px"><div><div class="sh">${BRAND()} v${esc((UPD.remote||{}).version||'')}</div><div class="sm muted">${s==='dl'?L('正在下载…','Downloading…'):s==='ready'?L('下载完成','Downloaded'):s==='perm'?L('需要允许安装','Allow installs'):L('下载失败','Download failed')}</div></div></div>`;
   let body='';
   if(s==='dl')body=bar+`<button class="bigbtn ghost" style="width:100%;margin-top:16px" onclick="updCancel()">${L('取消','Cancel')}</button>`;
   else if(s==='ready')body=bar+`<button class="bigbtn" style="width:100%;margin-top:16px" onclick="updInstall()">${L('安装','Install')}</button>`;

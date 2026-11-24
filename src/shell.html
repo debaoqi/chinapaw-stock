@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<script>(function(){try{
+/* 与 ChinaPaw v4.3.5 相同：安卓手机浏览器只放大文字、不放大整页，与 App 显示一致 */
+var ua=navigator.userAgent;if(/; wv\)/.test(ua)||!/Android/i.test(ua))return;if(!(window.matchMedia&&matchMedia('(pointer:coarse)').matches))return;
+var m=document.createElement('meta');m.name='text-scale';m.content='scale';document.head.appendChild(m);
+var st=document.createElement('style');st.textContent='html.tsfix{font-size:16px;-webkit-text-size-adjust:calc(100% * env(preferred-text-scale,1));text-size-adjust:calc(100% * env(preferred-text-scale,1))}';
+document.head.appendChild(st);document.documentElement.classList.add('tsfix')}catch(e){}})();</script>
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="华宝进销存"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#F7F5F0">
 <title>华宝进销存</title>
@@ -13,7 +19,7 @@
 /*CSS*/
 </style>
 </head>
-<body>
+<body class="/*BODY*/">
 <div class="phone">
   <div class="sbar"><span>9:41</span><span class="island"></span><span>●●● ▮</span></div>
   <div class="screen" id="screen"></div>
@@ -24,7 +30,7 @@
   <div class="banner" id="banner"></div>
   <div class="toast" id="toast"></div>
 </div>
-<script src="config.js"></script>
+<!--CONFIG-->
 <script>
 /*CORE*/
 </script>
