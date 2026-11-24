@@ -1,7 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
 async def as_(pg,pw):
@@ -35,8 +35,9 @@ async def main():
         await A.evaluate("acctSheet('U4')");await A.wait_for_timeout(150);await A.click("#sheet .chip:has-text('采购部')");await A.wait_for_timeout(100);await A.click("#euRoles .chip:has-text('采购员')");await A.evaluate("acctSave()");await A.wait_for_timeout(300)
         print('U4 now:',await A.evaluate("[DB.get('users','U4').role,userTitle(DB.get('users','U4')),DB.get('users','U4').code]"))
         await A.evaluate("logout();S.view='login';S.lgRole=undefined;render(true)");await A.wait_for_timeout(200)
-        print('login buttons:',await A.evaluate("$$('.rolebtn').map(b=>b.textContent)"))
-        await A.click(".rolebtn:has-text('采购员')");await A.fill('#lgPw','buy888');await A.click('button.bigbtn');await A.wait_for_timeout(500)
+        print('dept buttons:',await A.evaluate("$$('.rolebtn').map(b=>b.textContent)"))
+        await A.click(".rolebtn:has-text('采购部')");await A.wait_for_timeout(200);print('采购部 positions:',await A.evaluate("$$('#lgPos .chip').map(b=>b.textContent)"))
+        await A.click("#lgPos .chip:has-text('采购员')");await A.fill('#lgPw','buy888');await A.click('button.bigbtn');await A.wait_for_timeout(500)
         print('signed in as:',await A.evaluate("[S.me.role,userTitle(S.me)]"),'| home badge:',await A.evaluate("$('#screen').innerText.includes('采购员')"))
         print('ERRORS' if errs else 'NO ERRORS',errs[:3]);await b.close()
 asyncio.run(main())

@@ -2,7 +2,7 @@
 import asyncio,json,urllib.parse
 from playwright.async_api import async_playwright
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
 RATES={'result':'success','time_last_update_unix':1795500000,'rates':{'USD':1,'GHS':10.8,'XOF':566.2,'NGN':1540,'EGP':48.9,'KES':129.3,'ZAR':17.9}}

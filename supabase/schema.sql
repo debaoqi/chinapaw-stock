@@ -272,6 +272,11 @@ begin
   return v_plan;
 end $$;
 
+-- ---------- 实时同步：手机每 3 秒问一次“最新编号”，有变化才下载（请求很小，省流量、省电） ----------
+create or replace function jxc_head(p_token text) returns bigint language sql stable security definer set search_path=public, extensions as $$
+  select case when exists(select 1 from jxc_sessions s join jxc_users u on u.id=s.user_id where s.token=p_token and u.active and s.last_seen > now()-interval '30 days')
+    then greatest(coalesce((select max(seq) from jxc_docs),0),coalesce((select max(seq) from jxc_users),0)) else -1 end $$;
+
 -- ---------- 登录页显示各部门新增的职位（只有名称，不含任何账号信息） ----------
 create or replace function jxc_positions() returns jsonb language sql stable security definer set search_path=public, extensions as $$
   select coalesce((select jsonb_agg(jsonb_build_object('id',x->>'id','dept',x->>'dept','role',x->>'role','n',x->'n')) from jxc_docs t, jsonb_array_elements(coalesce(t.d->'positions','[]'::jsonb)) x where t.k='settings' and t.id='app'),'[]'::jsonb) $$;
@@ -343,7 +348,7 @@ end $$;
 -- 网页（anon）只能调用这些函数
 grant execute on function jxc_login(text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
   jxc_pull(text,bigint), jxc_push(text,jsonb), jxc_admin_user(text,jsonb,text), jxc_set_plan(text,text,jsonb),
-  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions() to anon, authenticated;
+  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions(), jxc_head(text) to anon, authenticated;
 
 -- ---------- 图片存储：与华宝招聘相同（media/p/<sha1>，同一张图只存一份）。华宝项目里已有上传规则时，这条不会重复创建 ----------
 insert into storage.buckets(id,name,public) values('media','media',true) on conflict (id) do nothing;

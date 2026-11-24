@@ -2,7 +2,7 @@
 import asyncio,sys
 from playwright.async_api import async_playwright
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;LS.set('lgRole',r)}}",pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
 CODES=['111111','222222','333333','444444','555555','666666','444444-1']

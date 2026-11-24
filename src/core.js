@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.2.1',APP_BUILD=5;
+const APP_VER='1.2.2',APP_BUILD=6;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -93,7 +93,9 @@ const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['gm']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
 const deptOf=r=>DEPTS.find(d=>d.roles.includes(r))||DEPTS[0];
 const deptName=d=>nm(typeof d==='string'?DEPTS.find(x=>x.id===d)||{zh:d,en:d}:d);
-function positions(){const s=(typeof DB!=='undefined'&&DB.get('settings','app'))||null;if(s&&Array.isArray(s.positions)){const j=JSON.stringify(s.positions);if(j!==JSON.stringify(LS.get('pos',[])))LS.set('pos',s.positions);return s.positions}return LS.get('pos',[])}
+/* 职位列表：登录后以公司设置为准（同时存一份到手机，供登录页使用）；登录页在云端模式下用刚从云端取到的列表 */
+function positions(){const s=(typeof DB!=='undefined'&&DB.get('settings','app'))||null;if(S.me&&s&&Array.isArray(s.positions)){if(JSON.stringify(s.positions)!==JSON.stringify(LS.get('pos',[])))LS.set('pos',s.positions);return s.positions}
+  if(!S.me&&DB.cloud)return LS.get('pos',[]);return s&&Array.isArray(s.positions)?s.positions:LS.get('pos',[])}
 const posById=id=>positions().find(p=>p.id===id&&!p.del);
 const userTitle=u=>{const p=u&&u.pos&&posById(u.pos);return p&&p.role===u.role?nm(p.n):roleName(u&&u.role)};
 /* 自动生成账号代码：部门代码，已被使用就用“部门代码-序号” */
@@ -145,7 +147,7 @@ async function rpc(fn,args){const r=await fetch(CFG.supabaseUrl.replace(/\/$/,''
   const tx=await r.text();if(!r.ok){let m=tx;try{m=JSON.parse(tx).message||tx}catch(e){}throw new Error(m)}return tx?JSON.parse(tx):null}
 const Sync={timer:null,
   async run(force){
-    if(S.syncing)return;if(!navigator.onLine){S.online=false;window.syncUI&&syncUI();return}
+    if(S.syncing){S.syncAgain=true;return}if(!navigator.onLine){S.online=false;window.syncUI&&syncUI();return}
     S.syncing=true;window.syncUI&&syncUI();const v0=DB.ver;
     try{
       if(DB.cloud&&S.token){
@@ -166,9 +168,12 @@ const Sync={timer:null,
     }catch(e){console.error(e);S.syncErr=String(e.message||e);if(force===true)toast(L('同步失败：','Sync failed: ')+S.syncErr)}
     finally{S.syncing=false;window.syncUI&&syncUI();if(force===true&&!S.syncErr)toast(L('已同步','Synced'));
       /* 只有数据真的变了才刷新画面（原来每次后台同步都整页重画，造成闪动） */
-      if(DB.ver!==v0&&window.softRender)softRender()}},
-  start(){clearInterval(this.timer);const tick=()=>{if(document.visibilityState==='visible')this.run()};
-    this.timer=setInterval(tick,DB.cloud?12000:30000);
+      if(DB.ver!==v0&&window.softRender)softRender();if(S.syncAgain){S.syncAgain=false;setTimeout(()=>this.run(),30)}}},
+  /* 实时自动同步：每 3 秒只问一次云端“有没有新数据”（极小的请求），有变化才下载；自己的修改保存后立即上传 */
+  async head(){if(!DB.cloud||!S.token||S.syncing||!navigator.onLine)return;if(DB.outbox.length)return this.run();
+    try{const h=await rpc('jxc_head',{p_token:S.token});if(h===-1){S.syncErr='session';return}if(+h>DB.seq)this.run()}catch(e){}},
+  start(){clearInterval(this.timer);const tick=()=>{if(document.visibilityState!=='visible')return;if(DB.cloud)this.head();else if(DB.outbox.length)this.run()};
+    this.timer=setInterval(tick,3000);
     addEventListener('online',()=>{S.online=true;toast(L('网络已恢复，正在自动提交','Back online, submitting…'));this.run();window.syncUI&&syncUI();window.render&&render(false)});
     addEventListener('offline',()=>{S.online=false;window.syncUI&&syncUI();window.render&&render(false)});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')this.run()})}
@@ -219,6 +224,15 @@ const CARRIERS=[
  {id:'air',zh:'航空货运',en:'Air cargo',mode:'air',url:'https://t.17track.net/en#nums={no}'},
  {id:'other',zh:'其他（17TRACK 查询）',en:'Other (17TRACK)',mode:'express',url:'https://t.17track.net/en#nums={no}'}];
 const MODES={sea:['海运','Sea','ship'],air:['空运','Air','plane'],road:['陆运','Road','truck'],express:['快递','Express','box']};
+/* 运费：每种运输方式 = 单价 + 计费单位（公斤 / 立方米 / 吨）+ 时效。按实际重量和体积换算的“计费量” × 单价 = 运费 */
+const FR_UNIT={kg:['公斤','kg','kg'],cbm:['立方米','m³','m³'],t:['吨','ton','t']};
+const FR_FAC={sea:1000,air:167,road:333,express:200};   /* 1 立方米折算多少公斤（体积重） */
+const FR_DEF={sea:[2000,28,45,'cbm'],air:[100,5,9,'kg'],road:[1,1,3,'kg'],express:[160,3,6,'kg']};
+function frRate(m){const r=(((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).rates||{})[m]||FR_DEF[m];return {p:+r[0]||0,d1:+r[1]||0,d2:+r[2]||0,unit:FR_UNIT[r[3]]?r[3]:'kg'}}
+function frCost(m,kg,cbm,rate){const r=rate||frRate(m);kg=+kg||0;cbm=+cbm||0;const f=FR_FAC[m]||1000;
+  const q=r.unit==='cbm'?Math.max(cbm,kg/1000):r.unit==='t'?Math.max(kg,cbm*f)/1000:Math.max(kg,cbm*f);
+  return {q:Math.round(q*1000)/1000,unit:r.unit,p:r.p,cost:Math.round(q*r.p*100)/100,byVol:r.unit==='cbm'?cbm>=kg/1000:cbm*f>kg}}
+const frUnitName=u=>L(FR_UNIT[u][0],FR_UNIT[u][1]);
 const carrier=id=>CARRIERS.find(c=>c.id===id)||CARRIERS[CARRIERS.length-1];
 const trackUrl=s=>{const c=carrier(s.carrier);return c.url&&s.trackNo?c.url.replace('{no}',encodeURIComponent(s.trackNo)):''};
 
@@ -353,7 +367,7 @@ function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(see
 async function seedDemo(){
   const R=rng(20261124),pick=a=>a[Math.floor(R()*a.length)],now=Date.now(),D=864e5;
   const d={};KINDS.forEach(k=>d[k]=[]);
-  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1.2,28,45],air:[6.5,5,9],road:[0.35,1,3],express:[12,3,6]},lowRule:'min',plan:{limit:1}},{id:'codes',list:[]}];
+  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[2000,28,45,'cbm'],air:[100,5,9,'kg'],road:[1,1,3,'kg'],express:[160,3,6,'kg']},lowRule:'min',plan:{limit:1}},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'特马总仓',en:'Tema Main Warehouse'},city:{zh:'特马',en:'Tema'}},{id:'W2',n:{zh:'阿克拉门店仓',en:'Accra Shop Store'},city:{zh:'阿克拉',en:'Accra'}},{id:'W3',n:{zh:'库马西仓',en:'Kumasi Warehouse'},city:{zh:'库马西',en:'Kumasi'}}];
   const P=[['水泥 42.5R 50kg','Cement 42.5R 50kg','包','bag',78,92,300,4000,1,'建材','Building'],
    ['螺纹钢 Φ12 12m','Rebar Φ12 12m','根','pc',95,118,150,2500,0,'钢材','Steel'],['螺纹钢 Φ16 12m','Rebar Φ16 12m','根','pc',168,205,100,1500,0,'钢材','Steel'],
