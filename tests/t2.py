@@ -46,7 +46,7 @@ async def main():
         print('cashier sees stock?',await A.evaluate("can('stock')"),'| buyer sees finance?',await A.evaluate("can('fin',{role:'buyer'})"),'| sales sees cost?',await A.evaluate("can('cost',{role:'sales'})"))
         # accounts
         print('GM:',await as_(A,'111111'))
-        await A.evaluate("go('m_users');acctSheet(null,'333333-1')");await A.wait_for_timeout(200);await A.evaluate("S.eu.name='新销售'");await A.evaluate("acctSave()");await A.wait_for_timeout(300)
+        await A.evaluate("go('m_users');acctSheet(null,'sal');acctPick('sales',null)");await A.wait_for_timeout(200);await A.evaluate("S.eu.name='新销售'");await A.evaluate("acctSave()");await A.wait_for_timeout(300)
         print('new 333333-1 login:',await as_(A,'333333-1'))
         print('GM:',await as_(A,'111111'))
         u=await A.evaluate("DB.all('users').find(u=>u.code==='333333-1').id")
@@ -73,7 +73,7 @@ async def main():
         # 重新编辑: change position
         await A.evaluate("closeSheet(true);go('m_users')");await A.wait_for_timeout(200)
         print('list buttons:',await A.evaluate("[...document.querySelectorAll('#screen button.pill')].filter(b=>b.textContent.includes('重新编辑')).length"),'| 可登录 badges left:',await A.evaluate("document.querySelector('#screen').innerText.includes('可登录')"))
-        await A.evaluate("acctSheet('U4')");await A.wait_for_timeout(200);await A.click("#euRoles .chip:has-text('采购主管')");await A.evaluate("acctSave()");await A.wait_for_timeout(300)
+        await A.evaluate("acctSheet('U4')");await A.wait_for_timeout(200);await A.click("#sheet .chip:has-text('采购部')");await A.click("#euRoles .chip:has-text('采购主管')");await A.evaluate("acctSave()");await A.wait_for_timeout(300)
         print('keeper U4 now:',await A.evaluate("DB.get('users','U4').role"))
         print('can choose position for self?',await A.evaluate("acctSheet(S.me.id);document.querySelector('#euRoles .chip').style.pointerEvents"))
         await A.evaluate("closeSheet(true)")

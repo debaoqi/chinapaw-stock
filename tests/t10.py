@@ -23,7 +23,7 @@ async def main():
         print('accountant can mgmt:',await pg.evaluate("can('mgmt')"),'| opens m_users:',await pg.evaluate("go('m_users');S.view"))
         print('accountant edits GM:',await pg.evaluate("acctSheet('U1');document.querySelector('#toast').innerText"))
         print('grant toggle visible to accountant:',await pg.evaluate("acctSheet('U2');document.querySelector('#sheet').innerText.includes('授权使用后台')"))
-        await pg.evaluate("closeSheet();acctSheet(null,'444444-2')");await pg.evaluate("S.eu.name='新库管';acctSave()");await pg.wait_for_timeout(300)
+        await pg.evaluate("closeSheet();acctSheet(null,'whs');acctPick('keeper',null)");await pg.evaluate("S.eu.code='444444-2';S.eu.name='新库管';acctSave()");await pg.wait_for_timeout(300)
         print('accountant created 444444-2:',await pg.evaluate("!!DB.all('users').find(u=>u.code==='444444-2')"),'admin flag:',await pg.evaluate("DB.all('users').find(u=>u.code==='444444-2').admin"))
         # website: single address, admin redirects
         w=await (await b.new_context(viewport={'width':1366,'height':820},locale='zh-CN')).new_page();w.on('pageerror',lambda e:errs.append('W '+str(e)))

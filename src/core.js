@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.2.0',APP_BUILD=4;
+const APP_VER='1.2.1',APP_BUILD=5;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -89,6 +89,15 @@ const ROLE_ORDER=['gm','buyer','sales','keeper','acct','cashier'];
 function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
+/* 部门：每个部门有基本职位，也可以新增职位（新职位的权限参照本部门的一个基本职位） */
+const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['gm']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
+const deptOf=r=>DEPTS.find(d=>d.roles.includes(r))||DEPTS[0];
+const deptName=d=>nm(typeof d==='string'?DEPTS.find(x=>x.id===d)||{zh:d,en:d}:d);
+function positions(){const s=(typeof DB!=='undefined'&&DB.get('settings','app'))||null;if(s&&Array.isArray(s.positions)){const j=JSON.stringify(s.positions);if(j!==JSON.stringify(LS.get('pos',[])))LS.set('pos',s.positions);return s.positions}return LS.get('pos',[])}
+const posById=id=>positions().find(p=>p.id===id&&!p.del);
+const userTitle=u=>{const p=u&&u.pos&&posById(u.pos);return p&&p.role===u.role?nm(p.n):roleName(u&&u.role)};
+/* 自动生成账号代码：部门代码，已被使用就用“部门代码-序号” */
+function nextCode(role,except){const b=ROLES[role].code;const used=new Set(DB.all('users').filter(u=>u.id!==except).map(u=>String(u.code)));if(!used.has(b))return b;let n=1;while(used.has(b+'-'+n))n++;return b+'-'+n}
 function roleOfCode(code){const m=/^(\d{6})(?:-(\d{1,3}))?$/.exec(String(code||'').trim());if(!m)return null;return ROLE_ORDER.find(k=>ROLES[k].code===m[1])||null}
 /* 门店：免费版 1 个，VIP 可关联 3 个或更多（平台后台调整） */
 /* 门店名额：初始 1 个；每个“门店开通码”（付款后由平台提供）增加 1 个；名额大于 1 即为 VIP */
@@ -318,7 +327,7 @@ async function saveAccount(a,newPw){if(!can('mgmt'))throw new Error(L('没有后
   if(old&&old.id===S.me.id&&role!==old.role)throw new Error(L('不能修改自己的职位','You cannot change your own position'));
   if(old&&old.role==='gm'&&(role!=='gm'||a.active===false)&&!DB.all('users').some(u=>u.id!==old.id&&u.role==='gm'&&u.active!==false))throw new Error(L('至少要保留一个可登录的总经理','Keep at least one active general manager'));
   if(role==='gm')a={...a,admin:false};
-  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:nmP(a.name),role,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
+  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:nmP(a.name),role,pos:a.pos||null,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
   if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
   if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
   const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?a.code:null);

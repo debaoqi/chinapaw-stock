@@ -21,7 +21,8 @@ create table if not exists jxc_users(
 -- 从 v1.0（手机号登录）升级：增加账号代码，手机号不再必填，部门改为 6 个
 alter table jxc_users add column if not exists code text;
 alter table jxc_users add column if not exists is_admin boolean default false;   -- 总经理授权使用后台
-alter table jxc_users add column if not exists seq bigint;                        -- 账号有变化时更新，手机端只在变化时下载账号列表
+alter table jxc_users add column if not exists seq bigint;
+alter table jxc_users add column if not exists pos text;                          -- 部门里新增的职位（权限仍按 role）                        -- 账号有变化时更新，手机端只在变化时下载账号列表
 do $$ begin
   if exists(select 1 from information_schema.columns where table_name='jxc_users' and column_name='phone') then
     alter table jxc_users alter column phone drop not null;
@@ -87,7 +88,7 @@ begin
 end $$;
 
 create or replace function jxc_user_json(u jxc_users) returns jsonb language sql immutable as $$
-  select jsonb_build_object('id',u.id,'code',u.code,'name',u.name,'role',u.role,'wh',u.wh,'active',u.active,'admin',coalesce(u.is_admin,false)) $$;
+  select jsonb_build_object('id',u.id,'code',u.code,'name',u.name,'role',u.role,'wh',u.wh,'active',u.active,'admin',coalesce(u.is_admin,false),'pos',u.pos) $$;
 
 -- 账号代码 → 部门：111111 总经理 / 222222 采购主管 / 333333 销售经理 / 444444 仓库主管 / 555555 会计 / 666666 出纳；可带“-序号”
 create or replace function jxc_role_of(p_code text) returns text language sql immutable as $$
@@ -238,14 +239,14 @@ begin
     v_pw := coalesce(nullif(p_pw,''), v_code);
     if length(v_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
     if jxc_pw_taken(v_pw, null) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
-    insert into jxc_users(code,name,role,wh,active,pw_hash,is_admin)
-      values(v_code,p_user->>'name',v_role,coalesce(p_user->>'wh','W1'),coalesce((p_user->>'active')::boolean,true),crypt(v_pw,gen_salt('bf')),
+    insert into jxc_users(code,name,role,pos,wh,active,pw_hash,is_admin)
+      values(v_code,p_user->>'name',v_role,nullif(p_user->>'pos',''),coalesce(p_user->>'wh','W1'),coalesce((p_user->>'active')::boolean,true),crypt(v_pw,gen_salt('bf')),
         a.role='gm' and v_role<>'gm' and coalesce((p_user->>'admin')::boolean,false));
   else
     if v_id=a.id and not coalesce((p_user->>'active')::boolean,true) then raise exception '不能停用自己的账号 / You cannot disable yourself'; end if;
     if p_pw is not null and length(p_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
     if p_pw is not null and jxc_pw_taken(p_pw, v_id) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
-    update jxc_users set name=coalesce(p_user->>'name',name), role=v_role, wh=coalesce(p_user->>'wh',wh), active=coalesce((p_user->>'active')::boolean,true),
+    update jxc_users set name=coalesce(p_user->>'name',name), role=v_role, pos=case when v_id=a.id then pos else nullif(p_user->>'pos','') end, wh=coalesce(p_user->>'wh',wh), active=coalesce((p_user->>'active')::boolean,true),
       pw_hash=case when p_pw is null then pw_hash else crypt(p_pw,gen_salt('bf')) end,
       is_admin=case when v_role='gm' then false when a.role='gm' then coalesce((p_user->>'admin')::boolean,false) else is_admin end where id=v_id;
     if p_pw is not null or not coalesce((p_user->>'active')::boolean,true) then delete from jxc_sessions where user_id=v_id; end if;
@@ -270,6 +271,10 @@ begin
   insert into jxc_audit(user_id,action,detail) values(a.id,'set_plan',v_plan);
   return v_plan;
 end $$;
+
+-- ---------- 登录页显示各部门新增的职位（只有名称，不含任何账号信息） ----------
+create or replace function jxc_positions() returns jsonb language sql stable security definer set search_path=public, extensions as $$
+  select coalesce((select jsonb_agg(jsonb_build_object('id',x->>'id','dept',x->>'dept','role',x->>'role','n',x->'n')) from jxc_docs t, jsonb_array_elements(coalesce(t.d->'positions','[]'::jsonb)) x where t.k='settings' and t.id='app'),'[]'::jsonb) $$;
 
 -- ---------- 门店开通码：生成（平台）/ 使用（总经理或被授权的人） ----------
 create or replace function jxc_gen_codes(p_platform_pw text, p_n int default 1) returns jsonb
@@ -338,7 +343,7 @@ end $$;
 -- 网页（anon）只能调用这些函数
 grant execute on function jxc_login(text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
   jxc_pull(text,bigint), jxc_push(text,jsonb), jxc_admin_user(text,jsonb,text), jxc_set_plan(text,text,jsonb),
-  jxc_gen_codes(text,int), jxc_redeem_code(text,text) to anon, authenticated;
+  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions() to anon, authenticated;
 
 -- ---------- 图片存储：与华宝招聘相同（media/p/<sha1>，同一张图只存一份）。华宝项目里已有上传规则时，这条不会重复创建 ----------
 insert into storage.buckets(id,name,public) values('media','media',true) on conflict (id) do nothing;

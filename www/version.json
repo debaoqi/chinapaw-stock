@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "build": 4,
+  "version": "1.2.1",
+  "build": 5,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,6 +10,7 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "账号按部门管理：总经办、采购部、销售部、仓储部、财务部；每个部门可新增职位（如采购员、收银员），新增账号先选部门再选职位，账号代码自动生成",
       "付款审批：会计提交申请 → 总经理批准或驳回 → 出纳凭流水号付款，每一步都有记录",
       "只用本国货币结算，去掉美元选项（总经理可在设置里选择结算货币）",
       "客户和供应商可以删除（有未结清货款或未完成单据时会提示先处理）",
@@ -17,6 +18,7 @@
       "初始 1 个门店，新增门店需要开通码；账号列表“重新编辑”可修改职位"
     ],
     "en": [
+      "Accounts by department: GM's office, Purchasing, Sales, Warehouse, Finance; each department can add positions; new accounts pick department then position and get a code automatically",
       "Payment approval: the accountant requests → the GM approves or rejects → the cashier pays with a reference; every step is recorded",
       "Settles in the local currency only; the US$ option is gone (the GM picks the settlement currency in settings)",
       "Customers and suppliers can be deleted (unless they still have unpaid balances or open orders)",
