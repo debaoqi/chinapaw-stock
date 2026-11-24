@@ -1,6 +1,6 @@
 {
-  "version": "1.2.3",
-  "build": 7,
+  "version": "1.2.4",
+  "build": 8,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,6 +10,7 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "总经理首页“各部门进展”改为各部门颜色的彩色卡片，需要处理的数字用白底红字突出",
       "去掉所有广告语；财务和首页的金额数字去掉货币符号（单位统一标在旁边），字号自动缩放，手机上能完整显示",
       "实时自动同步：其他人的修改约 1 秒内出现，不再需要“立即同步”",
       "登录：先选部门，再选职位（后台新增的职位会自动出现），最后输入密码",
@@ -17,6 +18,7 @@
       "去掉“本机演示模式”等无用显示"
     ],
     "en": [
+      "GM home: department progress cards now use each department’s colour; items needing attention are highlighted",
       "Removed all slogans; amount tiles drop the currency symbol (unit shown alongside) and shrink to fit on phones",
       "Real-time sync: other people’s changes appear within about a second; no more “Sync now”",
       "Sign in: choose the department, then the position (positions added in the backend appear automatically), then the password",

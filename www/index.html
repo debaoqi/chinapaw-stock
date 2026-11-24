@@ -224,7 +224,13 @@ textarea.inp{min-height:76px;resize:vertical}
 #pwaBar button{pointer-events:auto;border-radius:999px;background:#161616;color:#fff;font-weight:800;font-size:14px;padding:12px 20px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 22px rgba(0,0,0,.22)}
 /* ===== v1.1：总经理部门进展 ===== */
 .dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.dgrid .box{min-width:0}.dgrid .badge{max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
+.dgrid .box{min-width:0}
+.dcard{margin:0;padding:12px 14px;cursor:pointer;background:var(--dc);color:#fff;box-shadow:0 6px 16px -8px var(--dc)}
+.dcard.dk{color:#161616}
+.dcard .dtt{font-size:15px;letter-spacing:.2px}
+.dcard .dl{opacity:.88;font-weight:600}
+.dcard .dwarn{background:#fff;color:#D2322D;border-radius:999px;padding:0 8px;min-width:22px;text-align:center}
+.dcard:active{transform:scale(.98)}.dgrid .badge{max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
 .dgrid .box:last-child:nth-child(odd){grid-column:1/3}
 /* ===== 阿拉伯语从右到左 ===== */
 [dir=rtl] .cols>div{padding-right:0;margin-right:0;padding-left:6px;margin-left:7px;border-right:0;border-left:1px solid #D9CFB8}
@@ -305,7 +311,7 @@ window.TR_ALL=[" change(s) rejected (no permission)", " h ago", " min ago", " pa
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.2.3',APP_BUILD=7;
+const APP_VER='1.2.4',APP_BUILD=8;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -1175,7 +1181,7 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
    ${mv.length?`<div class="sec-h">${L('最近出入库','Recent movements')}${can('report')?`<a onclick="go('report')">${L('报表','Reports')} ›</a>`:''}</div><div class="box" style="margin-top:0;padding:4px 16px">${mv.map(mvRow).join('')}</div>`:''}
   </div>`};
 /* 总经理：各部门进展一目了然 */
-function deptBoard(F,x){const card=(role,lines,fn)=>`<div class="box" style="margin:0;padding:12px 14px;cursor:pointer" onclick="${fn}"><div class="row between"><span class="badge ${ROLES[role].c}">${roleName(role)}</span>${ic('chev',14)}</div>${lines.map(l=>`<div class="row between" style="margin-top:7px;gap:6px"><span class="xs muted one">${l[0]}</span><b class="sm ${l[2]||''}" data-notr style="white-space:nowrap">${l[1]}</b></div>`).join('')}</div>`;
+function deptBoard(F,x){const card=(role,lines,fn)=>`<div class="box dcard ${role==='sales'?'dk':''}" style="--dc:${ROLE_COLOR[role]}" onclick="${fn}"><div class="row between"><b class="dtt one">${roleName(role)}</b>${ic('chev',14)}</div>${lines.map(l=>`<div class="row between" style="margin-top:7px;gap:6px"><span class="xs one dl">${l[0]}</span><b class="sm ${l[2]?'dwarn':''}" data-notr style="white-space:nowrap">${l[1]}</b></div>`).join('')}</div>`;
   const mon=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const poM=DB.all('po').filter(p=>p.t>=mon&&p.status!=='draft'&&p.status!=='cancel').reduce((a,p)=>a+docTotal(p),0);
   return `<div class="sec-h"><span>${L('各部门进展','Department progress')} <span class="xs muted" style="font-weight:600">${L('金额单位','in')} <span data-notr>${esc(CUR())}</span></span></span><a onclick="go('report')">${L('报表','Reports')} ›</a></div><div class="dgrid">
    ${card('buyer',[[L('本月采购额','Purchases, month'),numK(poM)],[L('在途采购单','Open POs'),x.toRecv],[L('库存不足','Low stock'),x.low,x.low?'red':'']],"S.docSeg='po';S.docF='all';tab('docs')")}

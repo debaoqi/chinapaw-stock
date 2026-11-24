@@ -206,7 +206,13 @@ textarea.inp{min-height:76px;resize:vertical}
 #pwaBar button{pointer-events:auto;border-radius:999px;background:#161616;color:#fff;font-weight:800;font-size:14px;padding:12px 20px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 22px rgba(0,0,0,.22)}
 /* ===== v1.1：总经理部门进展 ===== */
 .dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.dgrid .box{min-width:0}.dgrid .badge{max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
+.dgrid .box{min-width:0}
+.dcard{margin:0;padding:12px 14px;cursor:pointer;background:var(--dc);color:#fff;box-shadow:0 6px 16px -8px var(--dc)}
+.dcard.dk{color:#161616}
+.dcard .dtt{font-size:15px;letter-spacing:.2px}
+.dcard .dl{opacity:.88;font-weight:600}
+.dcard .dwarn{background:#fff;color:#D2322D;border-radius:999px;padding:0 8px;min-width:22px;text-align:center}
+.dcard:active{transform:scale(.98)}.dgrid .badge{max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
 .dgrid .box:last-child:nth-child(odd){grid-column:1/3}
 /* ===== 阿拉伯语从右到左 ===== */
 [dir=rtl] .cols>div{padding-right:0;margin-right:0;padding-left:6px;margin-left:7px;border-right:0;border-left:1px solid #D9CFB8}
