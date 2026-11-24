@@ -54,9 +54,11 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stro
 .wcard .qi{width:44px;height:44px;border-radius:14px;background:var(--gold);display:grid;place-items:center;flex:none}
 .wcard .go{width:34px;height:34px;border-radius:50%;background:#161616;color:#fff;display:grid;place-items:center;flex:none}
 /* stats */
-.stats{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:8px;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.stats .stat:nth-child(3){grid-column:1/3;display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:16px}
+.stats .stat:nth-child(3) .n{font-size:18px}.stats .stat:nth-child(3) .l{font-size:13px;margin:0;font-weight:600}
 .stat{background:var(--card);border-radius:20px;padding:12px;min-width:0}
-.stat .n{font-size:clamp(15px,5.2vw,21px);font-weight:800;letter-spacing:-.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat .n{font-size:clamp(16px,5.4vw,22px);font-weight:800;letter-spacing:-.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat .l{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat.g{background:var(--green);color:#fff}.stat.g .l{color:rgba(255,255,255,.8)}
 .stat.y{background:var(--gold)}.stat.y .l{color:rgba(0,0,0,.6)}
@@ -238,7 +240,7 @@ body.web #screen .pad{padding:20px 28px}
 body.web #screen .pad div:has(> .wc){display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px;align-items:start}
 body.web #screen .pad div:has(> .wc)>.wc{margin:0}
 body.web #screen .pad div:has(> .wc)>.empty{grid-column:1/-1}
-body.web .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+body.web .stats{grid-template-columns:repeat(3,minmax(0,1fr))}body.web .stats .stat:nth-child(3){grid-column:auto;display:block;padding:12px;border-radius:20px}body.web .stats .stat:nth-child(3) .n{font-size:21px}body.web .stats .stat:nth-child(3) .l{font-size:11px;margin-top:2px}
 body.web .dgrid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
 body.web .dgrid .box:last-child:nth-child(odd){grid-column:auto}
 body.web .wtiles{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}

@@ -110,7 +110,7 @@ language sql immutable as $$
     when p_k='counts' and coalesce(p_d->>'status','') in ('approved','rejected') then false
     when p_role='buyer'  then p_k in ('po','partners','products','ships','svc') or (p_k='pr' and coalesce(p_d->>'status','')='pending')
     when p_role='sales'  then p_k in ('so','partners','ships','svc') or (p_k='sr' and coalesce(p_d->>'status','')='pending')
-    when p_role='keeper' then p_k in ('po','grn','so','pr','sr','counts','ships','svc') or (p_k='moves' and p_d->>'type' in ('po_in','po_ret','so_out','so_ret'))
+    when p_role='keeper' then p_k in ('po','grn','so','pr','sr','counts','ships','svc') or (p_k='moves' and p_d->>'type' in ('po_in','po_ret','so_out','so_ret','init'))
     when p_role='acct'   then p_k='fin' and ((p_d->>'type'='rcv' and p_d->>'status'='verified') or (p_d->>'type'='pay' and p_d->>'status' in ('req','void')))
     when p_role='cashier' then p_k='fin' and ((p_d->>'type'='rcv' and p_d->>'status'='recorded') or (p_d->>'type'='pay' and p_d->>'status'='paid'))
     else false end $$;
@@ -272,6 +272,22 @@ begin
   return v_plan;
 end $$;
 
+-- ---------- 总经理：清空业务数据，开始正式使用（账号、门店、公司设置保留）。各手机通过同步收到“已删除”标记 ----------
+create or replace function jxc_reset(p_token text, p_confirm text) returns jsonb
+language plpgsql security definer set search_path=public, extensions as $$
+declare a jxc_users; n int; v_u bigint := (extract(epoch from now())*1000)::bigint;
+begin
+  a := jxc_me_row(p_token);
+  if a.role <> 'gm' then raise exception '只有总经理可以清空数据 / Only the GM can clear data'; end if;
+  if p_confirm <> '清空' then raise exception '请输入“清空”确认 / Type the confirmation'; end if;
+  update jxc_docs set d=jsonb_build_object('id',id,'del',true,'u',v_u), u=v_u, by_user=a.id, seq=nextval('jxc_seq'), updated_at=now()
+    where k not in ('settings','wh') and coalesce(d->>'del','false')<>'true';
+  get diagnostics n = row_count;
+  update jxc_docs set d=(d - 'cats') || jsonb_build_object('cats','[]'::jsonb,'u',v_u), u=v_u, seq=nextval('jxc_seq') where k='settings' and id='app';
+  insert into jxc_audit(user_id,action,detail) values(a.id,'reset',jsonb_build_object('docs',n));
+  return jsonb_build_object('cleared',n);
+end $$;
+
 -- ---------- 实时同步：手机每 3 秒问一次“最新编号”，有变化才下载（请求很小，省流量、省电） ----------
 create or replace function jxc_head(p_token text) returns bigint language sql stable security definer set search_path=public, extensions as $$
   select case when exists(select 1 from jxc_sessions s join jxc_users u on u.id=s.user_id where s.token=p_token and u.active and s.last_seen > now()-interval '30 days')
@@ -348,7 +364,7 @@ end $$;
 -- 网页（anon）只能调用这些函数
 grant execute on function jxc_login(text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
   jxc_pull(text,bigint), jxc_push(text,jsonb), jxc_admin_user(text,jsonb,text), jxc_set_plan(text,text,jsonb),
-  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions(), jxc_head(text) to anon, authenticated;
+  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions(), jxc_head(text), jxc_reset(text,text) to anon, authenticated;
 
 -- ---------- 图片存储：与华宝招聘相同（media/p/<sha1>，同一张图只存一份）。华宝项目里已有上传规则时，这条不会重复创建 ----------
 insert into storage.buckets(id,name,public) values('media','media',true) on conflict (id) do nothing;

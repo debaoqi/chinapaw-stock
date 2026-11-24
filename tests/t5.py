@@ -11,7 +11,7 @@ async def main():
         out=[]
         for w in (320,360,412):
             ctx=await b.new_context(viewport={'width':w,'height':760},locale='zh-CN',timezone_id='Africa/Accra');pg=await ctx.new_page()
-            await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(1000)
+            await pg.goto('http://localhost:8765/?demo=1');await pg.wait_for_timeout(1000)
             await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(700)
             for lang in ('zh','en'):
                 await pg.evaluate(f"setLang('{lang}',true)")

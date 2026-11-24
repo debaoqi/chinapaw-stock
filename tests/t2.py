@@ -13,7 +13,7 @@ async def main():
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra');errs=[]
         A=await ctx.new_page();K=await ctx.new_page()
         for pg in (A,K):pg.on('pageerror',lambda e:errs.append(str(e)))
-        await A.goto('http://localhost:8765/');await A.wait_for_timeout(1200);await K.goto('http://localhost:8765/');await K.wait_for_timeout(1000)
+        await A.goto('http://localhost:8765/?demo=1');await A.wait_for_timeout(1200);await K.goto('http://localhost:8765/');await K.wait_for_timeout(1000)
         print('sales:',await as_(A,'333333'))
         await K.evaluate("S.me=(({pw,...u})=>u)(DB.get('users','U4'));tab('home')")
         q0=await K.evaluate("qtyOf('P1','W1')")

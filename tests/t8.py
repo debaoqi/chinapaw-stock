@@ -18,7 +18,7 @@ async def main():
         await ctx.route('https://translate.googleapis.com/**',tr)
         await ctx.route('https://open.er-api.com/**',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps(RATES)))
         pg=await ctx.new_page();errs=[];pg.on('pageerror',lambda e:errs.append(str(e)))
-        await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(3500)
+        await pg.goto('http://localhost:8765/?demo=1');await pg.wait_for_timeout(3500)
         print('auto country/lang/currency:',await pg.evaluate("[S.country,S.lang,dispIso(),langsOf(S.country).join('/'),typeof usd,typeof fxSheet]"))
         print('login title:',await pg.evaluate("document.querySelector('.fld label').textContent"),'| button:',await pg.evaluate("document.querySelector('.langbtn').textContent"))
         await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(1500)

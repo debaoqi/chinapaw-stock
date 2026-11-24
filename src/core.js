@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.2.4',APP_BUILD=8;
+const APP_VER='1.3.0',APP_BUILD=9;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -389,7 +389,7 @@ async function seedDemo(){
    {id:'C4',type:'cus',n:{zh:'夸梅装饰',en:'Kwame Decor'},phone:'027 333 4455',city:{zh:'库马西',en:'Kumasi'}},
    {id:'C5',type:'cus',n:{zh:'库马西建材城',en:'Kumasi Building Mart'},phone:'050 777 1212',city:{zh:'库马西',en:'Kumasi'}}];
   /* 部门账号：初始密码 = 部门代码（总经理 111111 … 出纳 666666），444444-1 是新增的第 2 个仓库主管 */
-  const U=[['U1','gm','111111',{zh:'王总',en:'GM Wang'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
+  const U=[['U1','gm','111111',{zh:'孙总',en:'GM Sun'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
    ['U4','keeper','444444',{zh:'科乔·阿散蒂',en:'Kojo Asante'},'W1'],['U5','acct','555555',{zh:'陈会计',en:'Chen (Accounts)'},'W1'],['U6','cashier','666666',{zh:'阿贝娜',en:'Abena Owusu'},'W1'],
    ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3']];
   for(const u of U)d.users.push({id:u[0],role:u[1],code:u[2],name:u[3],wh:u[4],active:true,pw:await pwHash(u[0],u[2])});
@@ -532,3 +532,28 @@ function toast(m,bad){const t=$('#toast');if(!t)return;if(bad==null)bad=/失败|
 function copyText(s){const ok=()=>toast(L('已复制：','Copied: ')+s);try{navigator.clipboard.writeText(s).then(ok,()=>fb())}catch(e){fb()}
   function fb(){const a=document.createElement('textarea');a.value=s;document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(e){}a.remove();ok()}}
 function openExt(u){if(!u)return;try{window.open(u,'_blank')}catch(e){location.href=u}}
+
+/* ---------- 中文名称自动生成英文：输入框加 data-zh2en="#英文框"，英文框为空或是自动生成的才会填写，手动改过就不覆盖 ---------- */
+async function zh2en(t){t=(t||'').trim();if(!t)return '';if(!/[一-鿿]/.test(t))return t;const k='z2e_'+t;const c=LS.get(k,null);if(c)return c;
+  try{const r=await Promise.race([fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q='+encodeURIComponent(t)),new Promise((_,j)=>setTimeout(()=>j(0),5000))]);
+    const j=await r.json();const o=(j[0]||[]).map(x=>x[0]).join('').trim();if(o){LS.set(k,o);return o}}catch(e){}return ''}
+async function fillEn(o){if(o&&typeof o==='object'){o.zh=(o.zh||'').trim();o.en=(o.en||'').trim();if(!o.en&&o.zh)o.en=(await zh2en(o.zh))||o.zh;if(!o.zh&&o.en)o.zh=o.en}return o}
+if(typeof document!=='undefined')document.addEventListener('input',e=>{const el=e.target;if(!el||!el.dataset)return;
+  if(el.dataset.zh2en){clearTimeout(el._zt);el._zt=setTimeout(async()=>{const tg=document.querySelector(el.dataset.zh2en);if(!tg||(tg.value&&tg.dataset.auto!=='1'))return;
+    const en=await zh2en(el.value);if(!tg.isConnected||(tg.value&&tg.dataset.auto!=='1'))return;tg.value=en;tg.dispatchEvent(new Event('input',{bubbles:true}));tg.dataset.auto='1'},450)}
+  else if(el.dataset.auto==='1'&&e.isTrusted)el.dataset.auto=''},true);
+
+/* ---------- 空白开始：新客户只有门店、公司设置和各部门账号（初始密码 = 部门代码） ---------- */
+const BIZ_KINDS=()=>KINDS.filter(k=>!['users','wh','settings'].includes(k));
+async function seedBlank(){const d={};KINDS.forEach(k=>d[k]=[]);const cc=(typeof C==='function'&&C())||{};
+  d.settings=[{id:'app',base:cc.iso||'GHS',country:S.country||'GH',co:{zh:'',en:''},rates:{sea:[...FR_DEF.sea],air:[...FR_DEF.air],road:[...FR_DEF.road],express:[...FR_DEF.express]},lowRule:'min',plan:{limit:1},cats:[]},{id:'codes',list:[]}];
+  d.wh=[{id:'W1',n:{zh:'总店',en:'Main store'},city:{zh:'',en:''}}];
+  const U=[['U1','gm'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier']];
+  for(const [id,r] of U){const code=ROLES[r].code;d.users.push({id,role:r,code,name:{zh:ROLES[r].zh,en:ROLES[r].en},wh:'W1',active:true,pw:await pwHash(id,code)})}
+  KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save(true)}
+/* 清空业务数据（保留账号、门店、设置）。云端由服务器统一清空，其他手机同步 */
+async function resetData(){if(S.me.role!=='gm')throw new Error(L('只有总经理可以清空数据','Only the GM can clear data'));
+  if(DB.cloud){await rpc('jxc_reset',{p_token:S.token,p_confirm:'清空'});BIZ_KINDS().forEach(k=>DB.d[k]=[]);DB.outbox=DB.outbox.filter(o=>['users','wh','settings'].includes(o.k));await Sync.run(true)}
+  else{BIZ_KINDS().forEach(k=>DB.d[k]=[]);DB.outbox=[]}
+  const s=DB.get('settings','app')||{id:'app'};DB.put('settings',{...s,cats:[]});DB.ver++;DB.save(true);
+  Object.keys(localStorage).filter(k=>k.startsWith('jxc_notes')||k.startsWith('jxc_alert')).forEach(k=>localStorage.removeItem(k))}

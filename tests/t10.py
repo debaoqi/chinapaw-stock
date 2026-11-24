@@ -6,7 +6,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra');errs=[]
         pg=await ctx.new_page();pg.on('pageerror',lambda e:errs.append(str(e)))
-        await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(1500)
+        await pg.goto('http://localhost:8765/?demo=1');await pg.wait_for_timeout(1500)
         txt=await pg.evaluate("document.querySelector('#screen').innerText")
         print('passwords shown on login?', any(x in txt for x in ['111111','222222','333333','444444','555555','666666']),'| roles shown:',await pg.evaluate("[...document.querySelectorAll('.rolebtn')].map(b=>b.textContent).join(',')"))
         await pg.screenshot(path='shots/v3_login.png')

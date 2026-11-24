@@ -12,7 +12,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra');errs=[]
         A=await ctx.new_page();A.on('pageerror',lambda e:errs.append(str(e)))
-        await A.goto('http://localhost:8765/');await A.wait_for_timeout(1200)
+        await A.goto('http://localhost:8765/?demo=1');await A.wait_for_timeout(1200)
         print('buyer:',await as_(A,'222222'))
         await A.evaluate("go('me')");await A.wait_for_timeout(200);print('me has suppliers row:',await A.evaluate("$('#screen').innerText.includes('新增、修改、删除')"))
         await A.evaluate("go('m_partners')");await A.wait_for_timeout(200);print('buyer sections:',await A.evaluate("$$('#screen .sec-h').map(e=>e.textContent)"))

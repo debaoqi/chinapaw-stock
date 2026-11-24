@@ -12,7 +12,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra');errs=[]
         A=await ctx.new_page();A.on('pageerror',lambda e:errs.append(str(e)))
-        await A.goto('http://localhost:8765/');await A.wait_for_timeout(1200)
+        await A.goto('http://localhost:8765/?demo=1');await A.wait_for_timeout(1200)
         po=await A.evaluate("apDocs().find(p=>apOf(p).free>100).id");print('PO',po,'free',await A.evaluate(f"apOf(DB.get('po','{po}')).free"))
         print('acct:',await as_(A,'555555'))
         await A.evaluate(f"apSheet('{po}')");await A.wait_for_timeout(200)

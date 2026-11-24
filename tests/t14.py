@@ -12,7 +12,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra');errs=[]
         A=await ctx.new_page();A.on('pageerror',lambda e:errs.append(str(e)))
-        await A.goto('http://localhost:8765/');await A.wait_for_timeout(1200)
+        await A.goto('http://localhost:8765/?demo=1');await A.wait_for_timeout(1200)
         print('GM:',await as_(A,'111111'));await A.evaluate("go('m_users')");await A.wait_for_timeout(200)
         print('departments:',await A.evaluate("$$('#screen .sec-h .badge').map(e=>e.textContent)"))
         # new position in 采购部

@@ -26,7 +26,7 @@ async def main():
         await pg.evaluate("go('users');userEdit()");await pg.wait_for_timeout(300);await pg.evaluate("S.eu.name='新员工';S.eu.phone='0240000009'");await pg.fill('#euPw','abcdef');await pg.evaluate("userSave()");await pg.wait_for_timeout(300)
         print('user added',await pg.evaluate("!!DB.all('users').find(u=>u.phone==='0240000009')"))
         # new user logs in on app
-        app=await ctx.new_page();await app.goto('http://localhost:8765/');await app.wait_for_timeout(1200)
+        app=await ctx.new_page();await app.goto('http://localhost:8765/?demo=1');await app.wait_for_timeout(1200)
         await app.fill('#lgPhone','0240000009');await fillpw(app,'abcdef');await app.click('button.bigbtn');await app.wait_for_timeout(800)
         print('app login as',await app.evaluate("S.me&&S.me.role"),'admin still',await pg.evaluate("S.me.role"))
         print('\n'.join(errs) or 'NO ERRORS');await b.close()

@@ -1,6 +1,6 @@
 {
-  "version": "1.2.4",
-  "build": 8,
+  "version": "1.3.0",
+  "build": 9,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,20 +10,18 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "总经理首页“各部门进展”改为各部门颜色的彩色卡片，需要处理的数字用白底红字突出",
-      "去掉所有广告语；财务和首页的金额数字去掉货币符号（单位统一标在旁边），字号自动缩放，手机上能完整显示",
-      "实时自动同步：其他人的修改约 1 秒内出现，不再需要“立即同步”",
-      "登录：先选部门，再选职位（后台新增的职位会自动出现），最后输入密码",
-      "运费价格增加计费单位（每公斤 / 每立方米 / 每吨），按重量或体积 × 单价自动算出运费，并可试算；登记物流时填重量、体积自动算运费",
-      "去掉“本机演示模式”等无用显示"
+      "空白开始：新客户打开后没有任何演示数据，首页有“开始使用”7 步清单（公司、门店、分类、商品+现有库存、供应商、客户、人员密码）",
+      "商品分类可自行新增、改名、删除（如摩托车、手机、配件），库存页按分类筛选；商品可删除，新增商品可直接录入现有库存",
+      "中文名称自动生成英文（门店、客户、供应商、商品、分类、职位、公司名称）",
+      "财务卡片重新排列：应收、应付并排，第三项改为整行长条，数字完整显示",
+      "总经理可在“系统设置 → 数据管理”清空业务数据开始正式使用；演示数据中的总经理改为孙总"
     ],
     "en": [
-      "GM home: department progress cards now use each department’s colour; items needing attention are highlighted",
-      "Removed all slogans; amount tiles drop the currency symbol (unit shown alongside) and shrink to fit on phones",
-      "Real-time sync: other people’s changes appear within about a second; no more “Sync now”",
-      "Sign in: choose the department, then the position (positions added in the backend appear automatically), then the password",
-      "Freight rates now have a unit (per kg / m³ / ton); freight = weight or volume × price, with a calculator; shipments calculate freight from weight and volume",
-      "Removed “local demo mode” and other unneeded labels"
+      "Blank start: no demo data; the home page has a 7-step “Get started” checklist",
+      "Editable product categories (e.g. motorcycles, phones, parts) with a filter on the stock page; items can be deleted; new items can include current stock",
+      "English names are generated from Chinese names automatically",
+      "Finance tiles rearranged so every number shows in full",
+      "The GM can clear business data in Settings → Data to start for real"
     ]
   }
 }

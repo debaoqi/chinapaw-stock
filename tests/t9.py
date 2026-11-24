@@ -10,7 +10,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         ctx=await b.new_context(viewport={'width':1366,'height':820},locale='zh-CN',timezone_id='Africa/Accra',accept_downloads=True)
         pg=await ctx.new_page();errs=[];pg.on('pageerror',lambda e:errs.append(str(e)))
-        await pg.goto('http://localhost:8765/web.html');await pg.wait_for_timeout(1500);await pg.screenshot(path='shots/web_login.png')
+        await pg.goto('http://localhost:8765/web.html?demo=1');await pg.wait_for_timeout(1500);await pg.screenshot(path='shots/web_login.png')
         await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(1200)
         for v in ['home','stock','docs','fin','logi','report','m_users','m_stores']:
             await pg.evaluate(f"S.hist=[];S.view='{v}';render(true)");await pg.wait_for_timeout(300);await pg.screenshot(path=f'shots/web_{v}.png')

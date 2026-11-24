@@ -14,7 +14,7 @@ async def main():
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Africa/Accra')
         pg=await ctx.new_page();errs=[]
         pg.on('pageerror',lambda e:errs.append('PAGEERR '+str(e)));pg.on('console',lambda m:errs.append('CONSOLE '+m.text) if m.type=='error' and 'er-api' not in m.text and 'translate' not in m.text and 'Failed to load' not in m.text else None)
-        await pg.goto('http://localhost:8765/');await pg.wait_for_timeout(1800)
+        await pg.goto('http://localhost:8765/?demo=1');await pg.wait_for_timeout(1800)
         await pg.screenshot(path='shots/v2_login.png')
         for code in CODES:
             await pg.evaluate("logout();S.view='login';setLang('zh',true);render(true)");await pg.wait_for_timeout(200)
