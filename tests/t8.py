@@ -23,7 +23,7 @@ async def main():
         print('login title:',await pg.evaluate("document.querySelector('.fld label').textContent"),'| button:',await pg.evaluate("document.querySelector('.langbtn').textContent"))
         await fillpw(pg,'111111');await pg.click('button.bigbtn');await pg.wait_for_timeout(1500)
         await pg.screenshot(path='shots/v2_fr_home.png')
-        print('fr hero:',await pg.evaluate("document.querySelector('.hero').innerText"),'| tab:',await pg.evaluate("document.querySelector('.tnav .tl').textContent"))
+        print('fr section title:',await pg.evaluate("document.querySelector('#screen .sec-h').innerText"),'| tab:',await pg.evaluate("document.querySelector('.tnav .tl').textContent"))
         print('money (settlement currency only):',await pg.evaluate("[money(1000),moneyBase(1000)]"))
         print('number placeholders:',await pg.evaluate("L('','In transit 3 · Exceptions 12')"))
         print('no $ button / US$ text on screen:',await pg.evaluate("!/US\\$|⇄ \\$|美元/.test(document.body.innerText)"))

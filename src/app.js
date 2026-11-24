@@ -35,11 +35,11 @@ function render(top,soft){
   const isTab=TABS().some(t=>t[0]===S.view)&&!!S.me;sc.classList.toggle('nonav',!isTab);
   $('#navwrap').innerHTML=S.me&&(isTab||WEB)?tnav():'';document.body.classList.toggle('authed',!!S.me);
   if(top)sc.scrollTop=0;
-  syncUI();try{pwaBar()}catch(e){}fitText();
+  syncUI();try{pwaBar()}catch(e){}fitText();requestAnimationFrame(fitText);
 }
 /* 标题一律一行：放不下时先缩小字号（最多到 65%），仍放不下才用省略号（与 ChinaPaw v4.3.2 相同） */
 function fitText(){$$('#screen .hero,#screen .sc .t,#screen .stat .n,#screen .wtile .b,#screen .fit,#screen .ptitle').forEach(e=>{e.style.fontSize='';const cs=parseFloat(getComputedStyle(e).fontSize);let f=cs,i=0;
-  e.style.whiteSpace='nowrap';e.style.overflow='hidden';while(e.scrollWidth>e.clientWidth+1&&f>cs*.65&&i<40){f-=.5;e.style.fontSize=f+'px';i++}})}
+  e.style.whiteSpace='nowrap';e.style.overflow='hidden';while(e.scrollWidth>e.clientWidth+1&&f>cs*.5&&i<60){f-=.5;e.style.fontSize=f+'px';i++}})}
 addEventListener('resize',()=>{clearTimeout(window._fz);window._fz=setTimeout(fitText,150)});
 let _soft=0;
 /* 后台刷新：只有数据真的变化（或翻译、汇率更新）时才重画；正在输入或打开弹层时不打断 */
@@ -125,9 +125,7 @@ function lgPick(b,r,p){S.lgRole=r;S.lgPos=p;LS.set('lgRole',r);LS.set('lgPos',p)
 V.login=()=>{if(S.lgRole===undefined){S.lgRole=LS.get('lgRole',null);S.lgPos=LS.get('lgPos',null);S.lgDept=LS.get('lgDept',null)||(S.lgRole?deptOf(S.lgRole).id:null)}
   if(S.lgPos&&!posById(S.lgPos))S.lgPos=null;const dd=DEPTS.find(d=>d.id===S.lgDept);
   if(DB.cloud&&!S._posF){S._posF=1;rpc('jxc_positions',{}).then(l=>{if(Array.isArray(l)&&JSON.stringify(l)!==JSON.stringify(LS.get('pos',[]))){LS.set('pos',l);if(S.view==='login')render(false)}}).catch(()=>{})}
-  return `<div class="login-hero"><div class="row between"><div class="row gap6" style="min-width:0"><img class="logo" src="${LOGO}" alt=""><b style="font-size:18px" class="one">${BRAND()}</b></div><div class="row" style="gap:8px">${ctryBtn()}${langBtn()}</div></div>
-   <div class="fit" style="font-size:30px;font-weight:800;margin-top:26px;letter-spacing:-.5px;white-space:nowrap">${L('进销存，<span class="hl" style="background:var(--gold);color:#161616;padding:0 8px;border-radius:12px;display:inline-block;transform:rotate(-2deg)">很简单</span>！','Stock, <span style="background:var(--gold);color:#161616;padding:0 8px;border-radius:12px;display:inline-block;transform:rotate(-2deg)">simple</span>!')}</div>
-   <div class="fit" style="opacity:.85;margin-top:6px;font-size:13px;font-weight:600;letter-spacing:1px;white-space:nowrap">${L('非洲 54 国通用 · 各部门各司其职','For all 54 African countries · every department in its lane')}</div></div>
+  return `<div class="login-hero"><div class="row between"><div class="row gap6" style="min-width:0"><img class="logo" src="${LOGO}" alt=""><b style="font-size:18px" class="one">${BRAND()}</b></div><div class="row" style="gap:8px">${ctryBtn()}${langBtn()}</div></div></div>
   <div class="pad" style="padding-top:20px">
    <div class="fld"><label>${L('① 选择部门','① Choose your department')}</label><div class="rolegrid">${DEPTS.map(d=>`<button class="rolebtn ${S.lgDept===d.id?'on':''}" style="--rc:${ROLE_COLOR[d.roles[0]]}" onclick="lgDept('${d.id}')">${esc(deptName(d))}</button>`).join('')}</div></div>
    ${dd?`<div class="fld"><label>${L('② 选择职位','② Choose your position')}</label><div class="chips wrap" id="lgPos">${lgOpts(dd).map(o=>`<span class="chip ${S.lgRole===o.r&&(S.lgPos||null)===o.p?'on':''}" onclick="lgPick(this,'${o.r}',${o.p?`'${o.p}'`:'null'})">${esc(o.n)}</span>`).join('')}</div></div>`:''}
@@ -148,7 +146,7 @@ function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?'
 function greet(){const h=new Date().getHours();return h<12?L('上午好','Good morning'):h<18?L('下午好','Good afternoon'):L('晚上好','Good evening')}
 const bigCard=(bg,fg,icon,t,sub,fn)=>`<div class="sc" style="background:${bg};color:${fg}" onclick="${fn}"><div class="ic">${ic(icon,19)}</div><div style="flex:1;min-width:0"><div class="t">${t}</div><div class="roles">${sub}</div></div><div class="go">${ic('arrow',16)}</div></div>`;
 const tile=(bg,icon,t,sub,fn)=>`<div class="wtile" style="background:${bg}" onclick="${fn}"><div class="wti">${ic(icon)}</div><div style="min-width:0"><div class="b">${t}</div><div class="wsub">${sub}</div></div></div>`;
-const statT=(cls,val,label,fn,cur)=>`<div class="stat ${cls}" onclick="${fn||''}"><div class="n" data-notr>${cur?`<small style="font-size:11px;font-weight:700;opacity:.75">${esc(CUR())} </small>`:''}${val}</div><div class="l">${label}</div></div>`;
+const statT=(cls,val,label,fn,cur)=>`<div class="stat ${cls}" onclick="${fn||''}"><div class="n" data-notr>${val}</div><div class="l">${label}</div></div>`;
 V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   const soT=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=today);const sales=soT.reduce((a,s)=>a+docTotal(s),0);
   const toShip=DB.all('so').filter(s=>s.status==='submitted').length,toRecv=DB.all('po').filter(p=>p.status==='ordered').length;
@@ -194,8 +192,6 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
    ${WEB?'':`<div class="row between"><div class="row gap6" style="min-width:0"><img class="logo" src="${LOGO}" alt=""><b style="font-size:17px" class="one">${BRAND()}</b></div>
     <div class="row" style="gap:6px">${ctryBtn()}${langBtn()}<button class="icbtn" onclick="go('msgs')" aria-label="messages">${ic('bell')}${Alerts.unread()?'<span class="dot"></span>':''}</button></div></div>`}
    <div class="row gap6" style="margin-top:16px;white-space:nowrap;min-width:0"><span class="sm muted" style="flex:none">${greet()} · </span><b class="sm one" style="flex:none;max-width:40%">${esc(nmP(me.name))}</b><span class="badge ${ROLES[r].c}">${esc(userTitle(me))}</span><span class="xs muted one">${esc(whName(me.wh))}</span></div>
-   <h1 class="hero">${L('进销存，<span class="hl">很简单</span>！','Stock made <span class="hl">simple</span>!')}</h1>
-   <div class="row between" style="gap:8px"><div class="slogan one">${L('库存 · 采购 · 销售 · 财务 · 物流','STOCK · BUY · SELL · BOOKS · SHIP')}</div>${curBtn()}</div>
    ${r==='gm'?deptBoard(F,{sales,toShip,toRecv,low,transit,exc,tk}):''}
    <div style="display:flex;flex-direction:column;gap:12px;margin-top:18px">${big.join('')}${tiles.length?`<div class="wtiles">${tiles.join('')}</div>`:''}
     ${can('logi')?`<div class="wcard" onclick="tab('logi')"><div class="qi">${ic('truck')}</div><div style="flex:1;min-width:0"><div class="b fit" style="font-size:16px;white-space:nowrap">${L('物流跟踪与服务','Logistics & services')}</div>
@@ -208,12 +204,12 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
 /* 总经理：各部门进展一目了然 */
 function deptBoard(F,x){const card=(role,lines,fn)=>`<div class="box" style="margin:0;padding:12px 14px;cursor:pointer" onclick="${fn}"><div class="row between"><span class="badge ${ROLES[role].c}">${roleName(role)}</span>${ic('chev',14)}</div>${lines.map(l=>`<div class="row between" style="margin-top:7px;gap:6px"><span class="xs muted one">${l[0]}</span><b class="sm ${l[2]||''}" data-notr style="white-space:nowrap">${l[1]}</b></div>`).join('')}</div>`;
   const mon=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const poM=DB.all('po').filter(p=>p.t>=mon&&p.status!=='draft'&&p.status!=='cancel').reduce((a,p)=>a+docTotal(p),0);
-  return `<div class="sec-h">${L('各部门进展','Department progress')}<a onclick="go('report')">${L('报表','Reports')} ›</a></div><div class="dgrid">
-   ${card('buyer',[[L('本月采购额','Purchases, month'),moneyK(poM)],[L('在途采购单','Open POs'),x.toRecv],[L('库存不足','Low stock'),x.low,x.low?'red':'']],"S.docSeg='po';S.docF='all';tab('docs')")}
-   ${card('sales',[[L('今日销售额','Sales today'),moneyK(x.sales)],[L('待出库','To ship'),x.toShip],[L('销售草稿','Drafts'),DB.all('so').filter(s=>s.status==='draft').length]],"S.docSeg='so';S.docF='all';tab('docs')")}
+  return `<div class="sec-h"><span>${L('各部门进展','Department progress')} <span class="xs muted" style="font-weight:600">${L('金额单位','in')} <span data-notr>${esc(CUR())}</span></span></span><a onclick="go('report')">${L('报表','Reports')} ›</a></div><div class="dgrid">
+   ${card('buyer',[[L('本月采购额','Purchases, month'),numK(poM)],[L('在途采购单','Open POs'),x.toRecv],[L('库存不足','Low stock'),x.low,x.low?'red':'']],"S.docSeg='po';S.docF='all';tab('docs')")}
+   ${card('sales',[[L('今日销售额','Sales today'),numK(x.sales)],[L('待出库','To ship'),x.toShip],[L('销售草稿','Drafts'),DB.all('so').filter(s=>s.status==='draft').length]],"S.docSeg='so';S.docF='all';tab('docs')")}
    ${card('keeper',[[L('待入库 / 待出库','To receive / ship'),x.toRecv+' / '+x.toShip],[L('待审盘点','Counts to review'),x.tk,x.tk?'red':''],[L('物流异常','Exceptions'),x.exc,x.exc?'red':'']],"tab('stock')")}
-   ${card('acct',[[L('应收余额','Receivable'),moneyK(F.arBal)],[L('应付余额','Payable'),moneyK(F.apBal)],[L('待核对收款','To verify'),F.unverN,F.unverN?'red':'']],"S.finSeg='ar';tab('fin')")}
-   ${card('cashier',[[L('今日收款','Received today'),moneyK(F.rcvToday)],[L('待付款','To pay'),F.apprN,F.apprN?'red':''],[L('资金余额','Cash balance'),moneyK(F.cash)]],"S.finSeg='book';tab('fin')")}
+   ${card('acct',[[L('应收余额','Receivable'),numK(F.arBal)],[L('应付余额','Payable'),numK(F.apBal)],[L('待核对收款','To verify'),F.unverN,F.unverN?'red':'']],"S.finSeg='ar';tab('fin')")}
+   ${card('cashier',[[L('今日收款','Received today'),numK(F.rcvToday)],[L('待付款','To pay'),F.apprN,F.apprN?'red':''],[L('资金余额','Cash balance'),numK(F.cash)]],"S.finSeg='book';tab('fin')")}
   </div>`}
 function mvRow(m){const p=P_(m.pid);return `<div class="li" onclick="go('product',{id:'${m.pid}'})"><span class="badge ${(MV[m.type]||[0,0,'b-grey'])[2]}" style="min-width:64px;justify-content:center">${mvName(m.type)}</span>
   <div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(p.n))}</div><div class="xs muted one">${esc(whName(m.wh))} · ${fdate(m.t)}</div></div><b class="${m.qty<0?'red':'green'}" data-notr>${m.qty>0?'+':''}${n2(m.qty)}</b></div>`}
@@ -851,7 +847,7 @@ function pwdSheet(){openSheet(`<div class="sh">${L('修改我的密码','Change 
 async function doPw(){const a=$('#pw0').value,b=$('#pw1').value,c=$('#pw2').value,e=$('#pwE');if(b.length<6)return e.textContent=L('新密码至少 6 位','At least 6 characters');if(b!==c)return e.textContent=L('两次输入不一致','Passwords do not match');
   try{await changePw(a,b);closeSheet();toast(L('密码已修改，下次用新密码登录','Password changed — use it next time'),false)}catch(x){e.textContent=x.message}}
 function aboutSheet(){openSheet(`<div class="row gap"><img src="${LOGO}" class="logo" style="width:56px;height:56px;border-radius:16px"><div><div class="sh">${BRAND()}</div><div class="sm muted" data-notr>v${APP_VER} · build ${APP_BUILD}</div></div></div>
-  <div class="sm" style="margin-top:14px;line-height:1.75">${L('非洲 54 国通用的进销存：总经理、采购、销售、仓库、会计、出纳各司其职；自动匹配手机语言，全部用本国货币结算。','Inventory for all 54 African countries: GM, purchasing, sales, warehouse, accounting and cashier each in their own lane; follows your phone language and settles in your local currency.')}</div>
+
 `)}
 
 /* ================= 后台管理（总经理） ================= */
