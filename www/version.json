@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "build": 1,
+  "date": "2026-11-24",
+  "force": false,
+  "minNative": 1,
+  "forceNative": false,
+  "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
+  "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
+  "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
+  "notes": {
+    "zh": ["首个版本：库存、扫码、盘点、采购、销售、退货、物流跟踪与服务、实时同步、离线开单、消息提醒、简易报表"],
+    "en": ["First release: stock, scanning, counts, purchasing, sales, returns, logistics tracking & services, live sync, offline orders, alerts, reports"]
+  }
+}

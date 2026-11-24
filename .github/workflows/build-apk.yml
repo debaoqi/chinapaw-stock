@@ -1,0 +1,97 @@
+name: Build Android APK
+# 安卓 App 是“外壳”：打开后加载 https://debaoqi.github.io/chinapaw-stock/ ，改网页 = App 立即更新（与 ChinaPaw 相同）。
+# 只有改了名称、图标、权限、原生插件时才需要重新打包。每次打包自动发布 Release，并镜像到网站 www/app/ 便于快速下载。
+on:
+  push:
+    paths:
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'native/**'
+      - 'make_icons.py'
+      - 'logo-1024.png'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: apk
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the mirrored APK out of the app bundle
+        run: rm -rf www/app
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm install
+      - run: pip install pillow
+      - run: python3 make_icons.py www
+      - run: npx cap add android
+      - run: python3 make_icons.py android
+      - name: Permissions (camera for barcode scanning, notifications, install updates)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n</manifest>#' $M
+          grep -n "permission" $M
+      - name: In-app updater (download + install inside the app)
+        run: |
+          D=android/app/src/main/java/com/chinapaw/stock
+          cp native/AppUpdaterPlugin.java $D/AppUpdaterPlugin.java
+          printf 'package com.chinapaw.stock;\n\nimport android.os.Bundle;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(AppUpdaterPlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n}\n' > $D/MainActivity.java
+          mkdir -p android/app/src/main/res/xml
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<paths xmlns:android="http://schemas.android.com/apk/res/android">\n    <external-path name="my_images" path="." />\n    <cache-path name="my_cache_images" path="." />\n</paths>\n' > android/app/src/main/res/xml/file_paths.xml
+          grep -n "fileprovider" android/app/src/main/AndroidManifest.xml
+      - name: Set app version
+        run: |
+          VER=$(node -p "require('./www/version.json').version")
+          echo "VER=$VER" >> $GITHUB_ENV
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"$VER\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+      - name: Fixed signing key (so new versions install over old ones)
+        run: |
+          base64 -d android-test-signing.b64 > android/app/jxc-test.keystore
+          python3 - <<'PY'
+          p='android/app/build.gradle'; s=open(p).read()
+          cfg='''android {
+              signingConfigs {
+                  debug {
+                      storeFile file("jxc-test.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }'''
+          s=s.replace('android {',cfg,1); open(p,'w').write(s)
+          PY
+      - run: npx cap sync android
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk ChinaPawStock.apk
+      - name: Check signature
+        run: $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --print-certs ChinaPawStock.apk | head -3
+      - uses: actions/upload-artifact@v4
+        with: { name: ChinaPawStock-apk, path: ChinaPawStock.apk }
+      - name: Publish release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release create "build-${{ github.run_number }}" ChinaPawStock.apk --title "华宝进销存 v${VER} (build ${{ github.run_number }})" --notes "在手机上打开本页，点 ChinaPawStock.apk 下载安装。Open this page on your phone and tap ChinaPawStock.apk to install." --latest
+      - name: Mirror APK to Cloudflare (fast download, no GitHub)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          for i in 1 2 3; do
+            rm -rf mirror && git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" mirror && cd mirror
+            git config user.name "chinapaw-bot"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            mkdir -p www/app && cp ../ChinaPawStock.apk www/app/ChinaPawStock.apk
+            SZ=$(stat -c%s www/app/ChinaPawStock.apk); SHA=$(sha256sum www/app/ChinaPawStock.apk | cut -d' ' -f1)
+            printf '{"build":%s,"version":"%s","size":%s,"sha256":"%s"}\n' "${{ github.run_number }}" "$VER" "$SZ" "$SHA" > www/app/apk.json
+            git add www/app && git commit -q -m "APK build ${{ github.run_number }} mirror" && git push -q origin HEAD:main && break
+            cd .. ; sleep 5
+          done
+          sleep 5; curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/www/app/ChinaPawStock.apk" | head -c 300 || true
+      - name: Republish the website so the APK download link works
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh workflow run pages.yml --ref main -R ${{ github.repository }}

@@ -1,0 +1,3 @@
+{"appId":"com.chinapaw.stock","appName":"华宝进销存","webDir":"www",
+ "server":{"url":"https://debaoqi.github.io/chinapaw-stock/","errorPath":"offline.html","androidScheme":"https"},
+ "android":{"backgroundColor":"#F7F5F0"}}

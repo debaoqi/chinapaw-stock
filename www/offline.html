@@ -1,0 +1,8 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>华宝进销存</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#F7F5F0;font-family:-apple-system,"PingFang SC","Noto Sans SC",Roboto,sans-serif;color:#1C1C1E;text-align:center}
+.c{padding:32px}img{width:76px;height:76px;border-radius:24px;margin:0 auto 22px;display:block}
+h1{font-size:22px;margin:0 0 8px}p{color:#8A8478;margin:4px 0;line-height:1.6}button{margin-top:26px;border:0;border-radius:40px;background:#0B7A4B;color:#fff;font-size:17px;font-weight:700;padding:16px 40px}</style></head>
+<body><div class="c"><img src="icon-192.png" alt=""><h1 id="t">No internet connection</h1><p id="d">Please check your network and try again.</p>
+<button id="b" onclick="location.href='https://debaoqi.github.io/chinapaw-stock/?r='+Date.now()">Try again</button></div>
+<script>const L=(localStorage.getItem('jxc_lang')||'"'+(navigator.language||'en')+'"').replace(/"/g,'').toLowerCase();if(L.slice(0,2)==='zh'){t.textContent='网络未连接';d.textContent='请检查网络后重试';b.textContent='重试'}
+addEventListener('online',()=>b.click());</script></body></html>

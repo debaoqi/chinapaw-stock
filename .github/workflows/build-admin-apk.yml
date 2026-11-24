@@ -1,0 +1,79 @@
+name: Build Admin APK
+# 管理后台 App：外壳加载 https://debaoqi.github.io/chinapaw-stock/admin/ （与 ChinaPaw 管理 App 相同）
+on:
+  push:
+    paths:
+      - 'make_icons.py'
+      - '.github/workflows/build-admin-apk.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: admin-apk
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm install
+      - run: pip install pillow
+      - name: Admin app config (loads https://debaoqi.github.io/chinapaw-stock/admin/)
+        run: |
+          mkdir -p admin-shell
+          printf '<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>location.replace("https://debaoqi.github.io/chinapaw-stock/admin/")</script>' > admin-shell/index.html
+          cat > admin-shell/offline.html <<'HTML'
+          <!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>进销存后台</title>
+          <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#161616;color:#fff;font-family:system-ui,sans-serif;text-align:center}
+          button{margin-top:18px;border:0;border-radius:24px;padding:12px 28px;font-size:16px;font-weight:700;background:#0B7A4B;color:#fff}</style></head>
+          <body><div><h2>网络连接失败 / No connection</h2><p style="opacity:.7">请检查网络后重试</p><button onclick="location.href='https://debaoqi.github.io/chinapaw-stock/admin/'">重新加载 / Retry</button></div></body></html>
+          HTML
+          printf '{"appId":"com.chinapaw.stock.admin","appName":"进销存后台","webDir":"admin-shell","server":{"url":"https://debaoqi.github.io/chinapaw-stock/admin/","errorPath":"offline.html","androidScheme":"https"},"android":{"backgroundColor":"#161616"}}\n' > capacitor.config.json
+      - run: npx cap add android
+      - run: python3 make_icons.py android admin
+      - name: Set app version
+        run: |
+          echo "VER=1.0.${{ github.run_number }}" >> $GITHUB_ENV
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+      - name: Fixed signing key
+        run: |
+          base64 -d android-test-signing.b64 > android/app/jxc-test.keystore
+          python3 - <<'PY'
+          p='android/app/build.gradle'; s=open(p).read()
+          cfg='''android {
+              signingConfigs {
+                  debug {
+                      storeFile file("jxc-test.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }'''
+          s=s.replace('android {',cfg,1); open(p,'w').write(s)
+          PY
+      - run: npx cap sync android
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk ChinaPawStock-Admin.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: ChinaPawStock-Admin-apk, path: ChinaPawStock-Admin.apk }
+      - name: Publish release (not marked latest)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release create "admin-${{ github.run_number }}" ChinaPawStock-Admin.apk --title "进销存后台 v${VER}" --notes "管理后台 App：在手机上打开本页，点击 ChinaPawStock-Admin.apk 下载安装。" --latest=false
+      - name: Mirror APK to Cloudflare
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          for i in 1 2 3 4 5; do
+            rm -rf mirror && git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" mirror && cd mirror
+            git config user.name "chinapaw-bot"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            mkdir -p www/app && cp ../ChinaPawStock-Admin.apk www/app/ChinaPawStock-Admin.apk
+            git add www/app && git commit -q -m "Admin APK build ${{ github.run_number }} mirror" && git push -q origin HEAD:main && break
+            cd .. ; sleep 8
+          done
+      - name: Republish the website so the APK download link works
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh workflow run pages.yml --ref main -R ${{ github.repository }}
