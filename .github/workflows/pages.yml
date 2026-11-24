@@ -1,5 +1,6 @@
 name: Deploy PWA to GitHub Pages
-# 每次 www/ 有修改（网页更新）就自动发布到 https://<你的用户名>.github.io/chinapaw-stock/ （与 ChinaPaw 相同）
+# 每次 www/ 有修改（网页更新）就自动发布到 https://debaoqi.github.io/chinapaw-stock/
+# 按 GitHub 推荐：打包（build）与发布（deploy）分成两个任务，发布时上传的文件已就绪
 on:
   push:
     branches: [main]
@@ -11,16 +12,13 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build site (PWA + mirrored APKs in www/app)
+      - name: Build site (PWA + website + admin + mirrored APKs)
         run: |
           mkdir -p _site && cp -r www/. _site/
           touch _site/.nojekyll
@@ -28,5 +26,12 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with: { path: _site }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
