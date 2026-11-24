@@ -28,7 +28,7 @@ build('www/index.html', '', '<script src="config.js"></script>')
 # 网站端：图标内嵌、不依赖其他文件（config.js 存在就用云端，不存在就是本机演示）
 logo_uri = 'data:image/svg+xml;base64,' + base64.b64encode(logo).decode()
 web = 'window.LOGO_DATA="' + logo_uri + '";'
-build('www/web.html', 'web', '<script src="config.js" onerror="void 0"></script>', web)
+build('www/web.html', 'web', '<script src="config.js" onerror="void 0"></script><script>window.JXC_CONFIG=(window.JXC_CONFIG&&window.JXC_CONFIG.supabaseUrl)?window.JXC_CONFIG:{supabaseUrl:"https://vctokfjzgjtvsqftadeh.supabase.co",supabaseAnonKey:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjdG9rZmp6Z2p0dnNxZnRhZGVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0ODU3NjAsImV4cCI6MjExMDA2MTc2MH0.4yA4ijyvz9F60W2yOCaVLi-tJmCLHHLslx5TbYo-ASA"}</script>', web)
 s = (R/'www/web.html').read_text(encoding='utf-8').replace('<link rel="manifest" href="manifest.webmanifest">','').replace('href="icon-192.png"', 'href="'+logo_uri+'"')
 (R/'www/web.html').write_text(s, encoding='utf-8')
 # 后台已并入网站端：旧的 /admin/ 地址（以及后台安卓 App）自动转到网站端的“后台管理”

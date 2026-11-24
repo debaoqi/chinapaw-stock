@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
-  "build": 3,
+  "version": "1.2.0",
+  "build": 4,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,14 +10,18 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "登录页不再显示各部门密码，密码只在后台查看和修改",
-      "网站端与后台合并为一个网址；总经理可以授权其他账号使用后台",
-      "非洲 54 国语言与当地货币、美元实时汇率；各部门各司其职；财务；门店与 VIP；修复闪动；Excel 报表带边框"
+      "付款审批：会计提交申请 → 总经理批准或驳回 → 出纳凭流水号付款，每一步都有记录",
+      "只用本国货币结算，去掉美元选项（总经理可在设置里选择结算货币）",
+      "客户和供应商可以删除（有未结清货款或未完成单据时会提示先处理）",
+      "数据自动保存到云端，图片与华宝招聘同一存储方式（压缩 + 缩略图），手机更省空间更流畅",
+      "初始 1 个门店，新增门店需要开通码；账号列表“重新编辑”可修改职位"
     ],
     "en": [
-      "Department passwords no longer shown on the sign-in page; manage them in the backend only",
-      "Website and backend merged into one address; the general manager can grant backend access to other accounts",
-      "54-country languages and local currency with live USD rates; departments in their own lanes; finance; stores & VIP; flicker fixed; bordered Excel reports"
+      "Payment approval: the accountant requests → the GM approves or rejects → the cashier pays with a reference; every step is recorded",
+      "Settles in the local currency only; the US$ option is gone (the GM picks the settlement currency in settings)",
+      "Customers and suppliers can be deleted (unless they still have unpaid balances or open orders)",
+      "Data saves to the cloud automatically; photos stored the same way as ChinaPaw (compressed + thumbnails) for a lighter, smoother phone",
+      "Starts with 1 store; each new store needs an activation code; “Edit” in the account list can change the position"
     ]
   }
 }

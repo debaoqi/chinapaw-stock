@@ -1,9 +1,9 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.1.1',APP_BUILD=3;
+const APP_VER='1.2.0',APP_BUILD=4;
 const CFG=window.JXC_CONFIG||{};
-const SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
+let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const LS={get(k,d){try{const v=localStorage.getItem('jxc_'+k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem('jxc_'+k,JSON.stringify(v))}catch(e){}},
@@ -86,22 +86,26 @@ const ROLES={
  cashier:{zh:'出纳',en:'Cashier',code:'666666',c:'b-orange',p:['fin','fin_receive','fin_pay']}
 };
 const ROLE_ORDER=['gm','buyer','sales','keeper','acct','cashier'];
-function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
 function roleOfCode(code){const m=/^(\d{6})(?:-(\d{1,3}))?$/.exec(String(code||'').trim());if(!m)return null;return ROLE_ORDER.find(k=>ROLES[k].code===m[1])||null}
 /* 门店：免费版 1 个，VIP 可关联 3 个或更多（平台后台调整） */
-const plan=()=>Object.assign({vip:false,limit:1},((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).plan||{});
+/* 门店名额：初始 1 个；每个“门店开通码”（付款后由平台提供）增加 1 个；名额大于 1 即为 VIP */
+const plan=()=>{const p=Object.assign({limit:1},((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).plan||{});p.limit=Math.max(1,+p.limit||1);p.vip=p.limit>1;return p};
 const allWh=()=>DB.all('wh');
-const activeWh=()=>allWh().slice(0,Math.max(1,plan().vip?plan().limit:1));
+const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
 const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
-  load(){const s=LS.get('db',null);KINDS.forEach(k=>this.d[k]=(s&&s[k])||[]);this.outbox=LS.get('outbox',[]);this.seq=LS.get('seq',0);this.lastSync=LS.get('lastSync',0);this.ver++},
-  save(){const o={};KINDS.forEach(k=>o[k]=this.d[k]);LS.set('db',o);LS.set('outbox',this.outbox);LS.set('seq',this.seq);LS.set('lastSync',this.lastSync)},
+  p(){return this.cloud?'c_':''},
+  load(){const P=this.p(),s=LS.get(P+'db',null);KINDS.forEach(k=>this.d[k]=(s&&s[k])||[]);this.outbox=LS.get(P+'outbox',[]);this.seq=LS.get(P+'seq',0);this.lastSync=LS.get(P+'lastSync',0);this.ver++},
+  /* 本机保存合并成一次（空闲时写入），连续操作不卡；关闭页面前一定写完 */
+  save(now){clearTimeout(this._st);if(now)return this._save();this._st=setTimeout(()=>{(window.requestIdleCallback||setTimeout)(()=>this._save())},300)},
+  _save(){clearTimeout(this._st);const o={};KINDS.forEach(k=>o[k]=this.d[k]);const P=this.p();LS.set(P+'db',o);LS.set(P+'outbox',this.outbox);LS.set(P+'seq',this.seq);LS.set(P+'lastSync',this.lastSync)},
   all(k){return (this.d[k]||[]).filter(x=>!x.del)},
   get(k,id){return (this.d[k]||[]).find(x=>x.id===id)},
   /* 写入一条记录：本机立即生效，进入待提交队列；联网后自动提交到云端 */
@@ -114,6 +118,7 @@ const DB={
     if(n){this.ver++;this.save()}return n}
 };
 /* 同一台设备多个窗口之间实时同步（演示多人协作，也让手机桌面版与浏览器版保持一致） */
+addEventListener('pagehide',()=>DB._save());document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')DB._save()});
 let BC=null;try{BC=new BroadcastChannel('jxc')}catch(e){}
 function bc(type,rows){try{BC&&BC.postMessage({type,rows})}catch(e){}}
 if(BC)BC.onmessage=e=>{const m=e.data||{};if(m.type==='chg'){const rows=(m.rows||[]).map(r=>({k:r.k,d:{...r.d,_q:0},force:true}));DB.merge(rows);onRemote(rows)}
@@ -121,6 +126,11 @@ if(BC)BC.onmessage=e=>{const m=e.data||{};if(m.type==='chg'){const rows=(m.rows|
 function onRemote(rows){try{typeof Alerts!=='undefined'&&Alerts.scan(rows)}catch(e){console.error(e)}if(window.softRender)softRender()}
 
 /* 云端（Supabase）：所有读写都走 RPC 函数，便于权限控制（与 ChinaPaw 相同的安全原则） */
+/* 云端是否已启用：数据库脚本未运行时（函数不存在）自动用本机模式，运行后自动切换到云端 */
+async function cloudProbe(){if(!DB.cloud)return;const k='cloudOK';let ok=LS.get(k,null);
+  try{const r=await Promise.race([fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/jxc_pull',{method:'POST',headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':'application/json'},body:'{"p_token":"probe","p_since":0}'}),new Promise((_,j)=>setTimeout(()=>j(0),6000))]);
+    ok=!(r.status===404||(await r.text()).includes('PGRST202'));LS.set(k,ok)}catch(e){}
+  if(ok===false)DB.cloud=false;else SK='c_'+SK}
 async function rpc(fn,args){const r=await fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
    headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(args||{})});
   const tx=await r.text();if(!r.ok){let m=tx;try{m=JSON.parse(tx).message||tx}catch(e){}throw new Error(m)}return tx?JSON.parse(tx):null}
@@ -138,7 +148,7 @@ const Sync={timer:null,
         const p=await rpc('jxc_pull',{p_token:S.token,p_since:DB.seq});
         if(p){const rows=(p.rows||[]).map(r=>({k:r.k,d:r.d,force:true}));const mine=new Set(DB.outbox.map(o=>o.k+o.id));
           const fresh=rows.filter(r=>!mine.has(r.k+r.d.id));DB.merge(fresh);DB.seq=p.seq||DB.seq;
-          if(p.users)DB.d.users=p.users;if(fresh.length&&(force!=='boot'))onRemote(fresh.filter(r=>r.d.by!==S.me.id))}
+          if(p.users&&p.users.length)DB.d.users=p.users;if(fresh.length&&(force!=='boot'))onRemote(fresh.filter(r=>r.d.by!==S.me.id))}
       }else{
         /* 本机演示模式：联网时把暂存的单据“提交”（清空队列） */
         if(DB.outbox.length){const ks=new Set(DB.outbox.map(o=>o.k+o.id));DB.outbox=[];(KINDS).forEach(k=>DB.d[k].forEach(x=>{if(ks.has(k+x.id))delete x._q}))}
@@ -149,7 +159,7 @@ const Sync={timer:null,
       /* 只有数据真的变了才刷新画面（原来每次后台同步都整页重画，造成闪动） */
       if(DB.ver!==v0&&window.softRender)softRender()}},
   start(){clearInterval(this.timer);const tick=()=>{if(document.visibilityState==='visible')this.run()};
-    this.timer=setInterval(tick,DB.cloud?8000:20000);
+    this.timer=setInterval(tick,DB.cloud?12000:30000);
     addEventListener('online',()=>{S.online=true;toast(L('网络已恢复，正在自动提交','Back online, submitting…'));this.run();window.syncUI&&syncUI();window.render&&render(false)});
     addEventListener('offline',()=>{S.online=false;window.syncUI&&syncUI();window.render&&render(false)});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')this.run()})}
@@ -206,6 +216,9 @@ const trackUrl=s=>{const c=carrier(s.carrier);return c.url&&s.trackNo?c.url.repl
 /* ---------- 上传：图片压缩 + 上传到云端存储（去重、失败自动重试；与 ChinaPaw upImg 相同） ---------- */
 function resizeImg(f,max){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));
   const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.8))};im.src=r.result};r.readAsDataURL(f)})}
+/* 选图：主图 + 列表缩略图（列表只下载缩略图，省流量、手机更流畅） */
+function pickImage2(max,cb,capture){const i=document.createElement('input');i.type='file';i.accept='image/*';if(capture)i.capture='environment';
+  i.onchange=async()=>{const f=i.files[0];if(!f)return;const [a,b]=await Promise.all([resizeImg(f,max||800),resizeImg(f,200)]);const [u,t]=await Promise.all([upImg(a),upImg(b)]);cb(u,t)};i.click()}
 function pickImage(max,cb,capture){const i=document.createElement('input');i.type='file';i.accept='image/*';if(capture)i.capture='environment';
   i.onchange=async()=>{const f=i.files[0];if(!f)return;const du=await resizeImg(f,max||1000);cb(await upImg(du))};i.click()}
 async function sha1(u8){const h=await crypto.subtle.digest('SHA-1',u8);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')}
@@ -213,13 +226,13 @@ const upCache=LS.get('mediaUp',{});
 async function upImg(du){
   if(!DB.cloud||typeof du!=='string'||!du.startsWith('data:image/'))return du;
   const m=/^data:(image\/(jpeg|jpg|png|webp));base64,([\s\S]*)$/.exec(du);if(!m)return du;
-  try{const bin=atob(m[3]);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  try{const bin=atob(m[3]);if(bin.length>590000)return du;const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
     const h=await sha1(u8);if(upCache[h])return upCache[h];const ext=m[2]==='png'?'png':'jpg',type=ext==='jpg'?'image/jpeg':'image/png';
-    const name='jxc/'+h.slice(0,2)+'/'+h+'.'+ext;const BASE=CFG.supabaseUrl.replace(/\/$/,'');let ok=false;
+    const name='p/'+h.slice(0,2)+'/'+h+'.'+ext;const BASE=CFG.supabaseUrl.replace(/\/$/,'');let ok=false;
     for(let a=0;a<4&&!ok;a++){if(a)await new Promise(z=>setTimeout(z,[0,800,2000,4500][a]));
       try{const r=await fetch(BASE+'/storage/v1/object/media/'+name,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':type,'cache-control':'max-age=31536000','x-upsert':'false'},body:new Blob([u8],{type})});
         if(r.ok){ok=true;break}const t=await r.text().catch(()=>'');if(/Duplicate|already exists/i.test(t)){ok=true;break}if(r.status<500&&r.status!==429)break}catch(e){}}
-    if(!ok)return du;const url=BASE+'/storage/v1/object/public/media/'+name;upCache[h]=url;LS.set('mediaUp',upCache);return url}catch(e){return du}}
+    if(!ok)return du;const url=BASE+'/storage/v1/object/public/media/'+name;upCache[h]=url;const ks=Object.keys(upCache);if(ks.length>200)delete upCache[ks[0]];LS.set('mediaUp',upCache);return url}catch(e){return du}}
 
 /* ---------- 下载：导出 CSV / JSON（浏览器直接下载；App 内用系统分享） ---------- */
 async function downloadFile(name,text,type){const blob=new Blob(['﻿'+text],{type:type||'text/csv;charset=utf-8'});
@@ -295,15 +308,35 @@ async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:
   const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
   if(await findByPw(nw,u.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
 /* 管理：新增 / 修改账号（总经理在后台操作） */
-async function saveAccount(a,newPw){const role=roleOfCode(a.code);if(!can('mgmt'))throw new Error(L('没有后台权限','No backend access'));
-  const old=a.id?DB.get('users',a.id):null;if(S.me.role!=='gm'){if(role==='gm'||(old&&old.role==='gm'))throw new Error(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));a={...a,admin:old?!!old.admin:false}}
-  if(role==='gm')a={...a,admin:false};if(!role)throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
-  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:a.name,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
+async function saveAccount(a,newPw){if(!can('mgmt'))throw new Error(L('没有后台权限','No backend access'));
+  const old=a.id?DB.get('users',a.id):null;
+  /* 职位可以在“重新编辑”里按需要更改；新账号默认按代码识别职位 */
+  const role=ROLES[a.role]?a.role:(old?old.role:roleOfCode(a.code));
+  if(!a.id&&!roleOfCode(a.code))throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
+  if(!role)throw new Error(L('请选择职位','Choose a position'));
+  if(S.me.role!=='gm'){if(role==='gm'||(old&&old.role==='gm'))throw new Error(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));a={...a,admin:old?!!old.admin:false}}
+  if(old&&old.id===S.me.id&&role!==old.role)throw new Error(L('不能修改自己的职位','You cannot change your own position'));
+  if(old&&old.role==='gm'&&(role!=='gm'||a.active===false)&&!DB.all('users').some(u=>u.id!==old.id&&u.role==='gm'&&u.active!==false))throw new Error(L('至少要保留一个可登录的总经理','Keep at least one active general manager'));
+  if(role==='gm')a={...a,admin:false};
+  if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:nmP(a.name),role,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
   if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
   if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
   const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?a.code:null);
   if(pw){if(pw.length<6)throw new Error(L('密码至少 6 位','At least 6 characters'));if(await findByPw(pw,d.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));d.pw=await pwHash(d.id,pw)}
-  else d.pw=(DB.get('users',d.id)||{}).pw;DB.put('users',d)}
+  else d.pw=(old||{}).pw;DB.put('users',d)}
+/* 门店开通码：付款后由平台提供，每个码增加 1 个门店名额（只能用一次） */
+async function redeemCode(code){code=String(code||'').trim().toUpperCase().replace(/\s/g,'');if(!code)throw new Error(L('请输入开通码','Enter the activation code'));
+  if(DB.cloud){const p=await rpc('jxc_redeem_code',{p_token:S.token,p_code:code});await Sync.run(true);return p}
+  const cs=DB.get('settings','codes')||{id:'codes',list:[]};const it=(cs.list||[]).find(x=>x.code===code);
+  if(!it)throw new Error(L('开通码不正确','Invalid activation code'));if(it.used)throw new Error(L('这个开通码已经用过了','This code has already been used'));
+  DB.put('settings',{...cs,list:cs.list.map(x=>x.code===code?{...x,used:Date.now(),by:S.me.id}:x)});
+  const s=DB.get('settings','app')||{id:'app'};const p={limit:plan().limit+1};DB.put('settings',{...s,plan:p});return p}
+async function genCodes(platformPw,n){n=Math.max(1,Math.min(50,+n||1));
+  if(DB.cloud)return await rpc('jxc_gen_codes',{p_platform_pw:platformPw,p_n:n});
+  if(await pwHash('platform',platformPw)!==PLATFORM_HASH)throw new Error(L('平台密码不正确','Wrong platform password'));
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const out=[];for(let k=0;k<n;k++){const r=crypto.getRandomValues(new Uint8Array(8));out.push('MD'+[...r].map(x=>A[x%A.length]).join(''))}
+  const cs=DB.get('settings','codes')||{id:'codes',list:[]};DB.put('settings',{...cs,list:[...(cs.list||[]),...out.map(code=>({code,t:Date.now()}))]});return out}
+
 
 /* ================= 演示数据（加纳建材贸易场景，与 ChinaPaw 同一市场） ================= */
 function ean(base){const d=base.split('').map(Number);let s=0;d.forEach((x,i)=>s+=x*(i%2?3:1));return base+((10-s%10)%10)}
@@ -311,7 +344,7 @@ function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(see
 async function seedDemo(){
   const R=rng(20261124),pick=a=>a[Math.floor(R()*a.length)],now=Date.now(),D=864e5;
   const d={};KINDS.forEach(k=>d[k]=[]);
-  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1.2,28,45],air:[6.5,5,9],road:[0.35,1,3],express:[12,3,6]},lowRule:'min',plan:{vip:true,limit:3}}];
+  d.settings=[{id:'app',base:'GHS',country:'GH',co:{zh:'华兴建材（加纳）',en:'Huaxing Building Materials (Ghana)'},rates:{sea:[1.2,28,45],air:[6.5,5,9],road:[0.35,1,3],express:[12,3,6]},lowRule:'min',plan:{limit:1}},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'特马总仓',en:'Tema Main Warehouse'},city:{zh:'特马',en:'Tema'}},{id:'W2',n:{zh:'阿克拉门店仓',en:'Accra Shop Store'},city:{zh:'阿克拉',en:'Accra'}},{id:'W3',n:{zh:'库马西仓',en:'Kumasi Warehouse'},city:{zh:'库马西',en:'Kumasi'}}];
   const P=[['水泥 42.5R 50kg','Cement 42.5R 50kg','包','bag',78,92,300,4000,1,'建材','Building'],
    ['螺纹钢 Φ12 12m','Rebar Φ12 12m','根','pc',95,118,150,2500,0,'钢材','Steel'],['螺纹钢 Φ16 12m','Rebar Φ16 12m','根','pc',168,205,100,1500,0,'钢材','Steel'],
@@ -398,13 +431,19 @@ async function seedDemo(){
   const tot=x=>(x.items||[]).reduce((a,i)=>a+i.qty*i.price,0);let fn=0;
   d.so.filter(s=>s.status==='done').forEach((s,k)=>{if(k%5===4)return;const amt=k%7===3?Math.round(tot(s)/2):tot(s);d.fin.push({id:'f'+(++fn),type:'rcv',ref:s.id,refKind:'so',amount:amt,method:['cash','bank','momo'][k%3],status:k%4===0?'recorded':'verified',t:s.t+2*36e5,by:'U6',vby:k%4===0?'':'U5'})});
   d.so.filter(s=>s.status==='shipped').forEach(s=>d.fin.push({id:'f'+(++fn),type:'rcv',ref:s.id,refKind:'so',amount:Math.round(tot(s)*0.3),method:'momo',status:'recorded',t:now-6*36e5,by:'U6',note:{zh:'定金',en:'Deposit'}}));
-  d.po.filter(p=>p.status==='done').forEach((p,k)=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:tot(p),method:'bank',status:'paid',t:p.u+3*864e5,by:'U5',pby:'U6',pt:p.u+3*864e5}));
-  d.po.filter(p=>p.status==='received').forEach(p=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:Math.round(tot(p)*0.5),method:'bank',status:'approved',t:now-5*36e5,by:'U5',note:{zh:'首付 50%',en:'50% first payment'}}));
+  d.po.filter(p=>p.status==='done').forEach((p,k)=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:tot(p),method:'bank',status:'paid',purp:'goods',t:p.u+3*864e5,at:p.u+2*864e5,by:'U5',gby:'U1',gt:p.u+2.5*864e5,gnote:'',pby:'U6',pt:p.u+3*864e5}));
+  d.po.filter(p=>p.status==='received').forEach(p=>d.fin.push({id:'f'+(++fn),type:'pay',ref:p.id,refKind:'po',amount:Math.round(tot(p)*0.5),method:'bank',status:'approved',purp:'dep',t:now-5*36e5,at:now-5*36e5,by:'U5',gby:'U1',gt:now-3*36e5,gnote:'',note:{zh:'首付 50%',en:'50% first payment'}}));
   d.fin.unshift({id:'f0',type:'rcv',ref:'',refKind:'open',amount:450000,method:'bank',status:'verified',t:t0,by:'U6',vby:'U5',note:{zh:'期初资金',en:'Opening balance'}});
   d.fin.forEach(f=>f.u=f.t);
   [ 'moves','so','po','grn','sr','counts','ships','svc'].forEach(k=>d[k].forEach(x=>{if(!x.u)x.u=x.t||now}));
   KINDS.forEach(k=>d[k].forEach(x=>{if(!x.u)x.u=now}));
-  KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save();LS.set('seeded',1);LS.set('seeded2',1);
+  /* 初始只有 1 个门店：演示数据全部归到总店（第 2 个门店起需要开通码） */
+  d.wh=[{id:'W1',n:{zh:'特马总店',en:'Tema Main Store'},city:{zh:'特马',en:'Tema'}}];
+  ['moves','po','grn','pr','so','sr','counts','ships','users'].forEach(k=>d[k].forEach(x=>{if(x.wh)x.wh='W1'}));
+  d.counts.forEach(t=>t.items.forEach(i=>{const q=d.moves.filter(m=>m.pid===i.pid&&m.wh==='W1').reduce((a,m)=>a+m.qty,0);const df=i.real-i.sys;i.sys=q;i.real=Math.max(0,q+df)}));
+  d.ships.forEach(s=>{['from','to'].forEach(k=>{if(s[k]&&s[k].en==='Accra Shop Store')s[k]={zh:'特马总店',en:'Tema Main Store'};if(s[k]&&s[k].en==='Tema Main Warehouse')s[k]={zh:'特马总店',en:'Tema Main Store'}})});
+  d.users.find(u=>u.id==='U7').name={zh:'亚乌（副库管）',en:'Yaw (Deputy)'};
+  KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save(true);LS.set('seeded',1);LS.set('seeded2',1);
 }
 
 /* ---------- 版本更新（与 ChinaPaw 相同：读取 version.json，网页版一键刷新，安装包版在 App 内下载安装） ---------- */

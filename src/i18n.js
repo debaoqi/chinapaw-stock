@@ -102,7 +102,7 @@ async function setLang(l,quiet){const prev=S.lang;LS.set('lang',l);
   S.lang=l;document.documentElement.lang=l==='zh'?'zh-CN':l;document.documentElement.dir=RTL.includes(l)?'rtl':'ltr';
   try{$('#toast').classList.remove('on')}catch(e){}document.title=BRAND();if(window.render&&!quiet)render(false)}
 function setCountry(code){S.country=AF[code]?code:'GH';LS.set('country',{code:S.country,manual:true});closeSheet(true);const ls=langsOf(S.country);
-  setLang(ls.includes(S.lang)?S.lang:pickLang(S.country));loadFx();toast(flagE(S.country)+' '+(S.lang==='zh'?C().zh:C().en)+' · '+C().sym,false)}
+  setLang(ls.includes(S.lang)?S.lang:pickLang(S.country));toast(flagE(S.country)+' '+(S.lang==='zh'?C().zh:C().en)+' · '+C().sym,false)}
 function countrySheet(){const q=(S.cq||'').trim().toLowerCase();const zhUI=S.lang==='zh';
   const row=c=>`<div class="li" onclick="setCountry('${c.code}')"><span style="font-size:24px;line-height:1" data-notr>${flagE(c.code)}</span><div style="flex:1;min-width:0"><b class="sm" data-notr>${esc(zhUI?c.zh:c.en)}</b><div class="xs muted one" data-notr>${c.langs.map(l=>LN[l]||l).join(' / ')} · ${esc(c.sym)} ${c.iso}</div></div>${S.country===c.code?ic('check'):''}</div>`;
   const list=Object.values(AF).filter(c=>!q||(c.zh+c.en+c.code+c.iso).toLowerCase().includes(q)).sort((a,b)=>zhUI?a.zh.localeCompare(b.zh,'zh'):a.en.localeCompare(b.en));
@@ -110,35 +110,23 @@ function countrySheet(){const q=(S.cq||'').trim().toLowerCase();const zhUI=S.lan
    <div class="searchbar">${ic('search')}<input placeholder="${L('搜索国家','Search country')}" value="${esc(S.cq||'')}" oninput="S.cq=this.value;const t=this;clearTimeout(window._cqT);window._cqT=setTimeout(()=>{countrySheet();const i=$('#sheet input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)"></div>
    <div style="margin-top:6px">${list.map(row).join('')}</div>`)}
 
-/* ---------- 货币：账本用公司本币记账；显示时按所在国家货币或美元实时换算 ---------- */
-const FXF={USD:1,DZD:134,AOA:915,XOF:565,BWP:13.6,BIF:2960,CVE:95,XAF:565,KMF:424,CDF:2850,DJF:178,EGP:49,ERN:15,SZL:18,ETB:140,GMD:72,GHS:11,GNF:8650,KES:129,LSL:18,LRD:180,LYD:5.45,MGA:4500,MWK:1740,MRU:40,MUR:46,MAD:9.2,MZN:64,NAD:18,NGN:1500,RWF:1450,STN:21.3,SCR:14.4,SLE:23,SOS:572,ZAR:18,SSP:4500,SDG:600,TZS:2500,TND:2.95,UGX:3650,ZMW:25,CNY:7.1,EUR:0.87};
-const FX={d:LS.get('fx',null),busy:false};
-async function loadFx(force){if(FX.busy)return;if(!force&&FX.d&&Date.now()-FX.d.t<3600e3)return;if(!navigator.onLine)return;FX.busy=true;
-  try{const r=await fetch('https://open.er-api.com/v6/latest/USD',{cache:'no-store'});const j=await r.json();if(j&&j.rates){FX.d={t:Date.now(),upd:(j.time_last_update_unix||0)*1000,r:j.rates};LS.set('fx',FX.d);if(window.softRender)softRender(true)}}
-  catch(e){}finally{FX.busy=false}}
-const rateOf=iso=>(FX.d&&FX.d.r&&FX.d.r[iso])||FXF[iso]||1;   /* 1 美元 = 多少该货币 */
-const fxLive=()=>!!(FX.d&&FX.d.r);
-const symOf=iso=>iso==='USD'?'US$':iso==='CNY'?'¥':((Object.values(AF).find(c=>c.iso===iso)||{}).sym||iso);
+/* ---------- 货币：只用本国货币结算（公司结算货币，由总经理在设置中选择），不做美元换算 ---------- */
+const symOf=iso=>iso==='CNY'?'¥':((Object.values(AF).find(c=>c.iso===iso)||{}).sym||iso);
 const baseIso=()=>((typeof DB!=='undefined'&&DB.get('settings','app'))||{}).base||'GHS';
-const dispIso=()=>S.curMode==='USD'?'USD':(LS.get('curFollow',true)?C().iso:baseIso());
-const conv=(n,to)=>(+n||0)/rateOf(baseIso())*rateOf(to||dispIso());
+const dispIso=baseIso;
+const conv=n=>+n||0;
 const fmtN=(n,d=2)=>(+n||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const n2=n=>(Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
-const numK=n=>{n=conv(n);return Math.abs(n)>=1e6?(n/1e6).toFixed(2)+'M':Math.abs(n)>=1e4?(n/1e3).toFixed(1)+'k':n2(n)};
-const CUR=()=>symOf(dispIso());
-const money=n=>CUR()+' '+fmtN(conv(n),(rateOf(dispIso())>=500?0:2));
+const numK=n=>{n=+n||0;return Math.abs(n)>=1e6?(n/1e6).toFixed(2)+'M':Math.abs(n)>=1e4?(n/1e3).toFixed(1)+'k':n2(n)};
+const CUR=()=>symOf(baseIso());
+const BIG_CUR=new Set(['XOF','XAF','KMF','BIF','CDF','DJF','GNF','MGA','MWK','RWF','SOS','SSP','TZS','UGX','SLE','LRD','NGN','AOA','ETB','SDG','DZD']);
+const money=n=>CUR()+' '+fmtN(n,BIG_CUR.has(baseIso())?0:2);
 const moneyK=n=>CUR()+' '+numK(n);
-const moneyBase=n=>symOf(baseIso())+' '+fmtN(n);
-const usd=n=>'US$ '+fmtN(conv(n,'USD'));
-function curToggle(){S.curMode=S.curMode==='USD'?'local':'USD';LS.set('curMode',S.curMode);render(false)}
-function curBtn(){return `<button class="syncchip" data-notr onclick="fxSheet()" style="padding:7px 10px">${esc(CUR())}${S.curMode==='USD'?'':' ⇄ $'}</button>`}
-function fxSheet(){const b=baseIso(),l=C().iso;const r=rateOf(l),rb=rateOf(b);
-  openSheet(`<div class="sh">${L('货币与美元汇率','Currency & USD rate')}</div>
-   <div class="xs muted">${fxLive()?L('实时汇率，更新于 ','Live rate, updated ')+fdate(FX.d.upd||FX.d.t):L('离线参考汇率（联网后自动更新）','Offline reference rate (updates when online)')}</div>
-   <div class="box"><div class="kv"><div><div class="l">${L('所在国家货币','Local currency')}</div><div class="v" data-notr>${flagE(S.country)} ${esc(C().sym)} · ${l}</div></div><div><div class="l">${L('1 美元 =','1 US$ =')}</div><div class="v" data-notr>${fmtN(r,r>=100?0:2)} ${l}</div></div>
-    <div><div class="l">${L('公司记账货币','Company ledger currency')}</div><div class="v" data-notr>${esc(symOf(b))} · ${b}</div></div><div><div class="l">${L('1 美元 =','1 US$ =')}</div><div class="v" data-notr>${fmtN(rb,rb>=100?0:2)} ${b}</div></div></div></div>
-   <div class="box"><h4>${L('换算','Convert')}</h4><div class="row gap"><input class="inp" id="fxA" type="number" inputmode="decimal" value="100" oninput="fxCalc()" style="background:var(--soft)"><select class="inp" id="fxF" onchange="fxCalc()" style="background:var(--soft);width:120px">${[...new Set([l,b,'USD'])].map(x=>`<option>${x}</option>`).join('')}</select></div><div id="fxOut" class="sm b" style="margin-top:10px;line-height:1.8" data-notr></div></div>
-   <div class="seg">${[['local',L('显示本地货币','Show local currency')],['USD',L('显示美元','Show US$')]].map(([k,t])=>`<button class="${(S.curMode||'local')===k?'on':''}" onclick="S.curMode='${k}';LS.set('curMode','${k}');closeSheet();render(false)">${t}</button>`).join('')}</div>
-   <div class="xs muted" style="margin-top:10px"><a href="https://www.exchangerate-api.com" target="_blank" style="color:inherit">Rates By Exchange Rate API</a></div>`);fxCalc()}
-function fxCalc(){const a=+($('#fxA')||{}).value||0,f=($('#fxF')||{}).value||'USD';const u=a/rateOf(f);const o=$('#fxOut');if(!o)return;
-  o.innerHTML=[...new Set([C().iso,baseIso(),'USD'])].filter(x=>x!==f).map(x=>`${fmtN(a,2)} ${f} = ${fmtN(u*rateOf(x),2)} ${x}`).join('<br>')}
+const moneyBase=money;
+const curBtn=()=>'';
+/* 总经理：选择结算货币（列出非洲 54 国的货币，金额不会自动换算） */
+function curSheet(){const b=baseIso();const isos=[...new Map(Object.values(AF).map(c=>[c.iso,c])).values()].sort((x,y)=>x.iso.localeCompare(y.iso));const mine=C().iso;
+  openSheet(`<div class="sh">${L('结算货币','Settlement currency')}</div><div class="xs muted" style="line-height:1.6">${L('全部单据、报表都只用这一种本国货币结算。更改后已有金额不会换算，请在开始使用前设置好。','All documents and reports settle in this one local currency. Existing amounts are not converted, so set it before you start.')}</div>
+   <div class="box" style="padding:4px 16px;max-height:52vh;overflow:auto">${[...isos.filter(c=>c.iso===mine),...isos.filter(c=>c.iso!==mine)].map(c=>`<div class="li" onclick="${can('mgmt')?`setBase('${c.iso}')`:''}"><b data-notr style="width:58px">${esc(c.sym)}</b><div style="flex:1;min-width:0" class="sm one"><span data-notr>${c.iso}</span> · ${esc(S.lang==='zh'?c.zh:c.en)}</div>${c.iso===b?ic('check',18):''}</div>`).join('')}</div>
+   ${can('mgmt')?'':`<div class="note-y" style="margin-top:10px">${L('只有总经理或被授权的人可以修改','Only the GM or an authorised user can change this')}</div>`}`)}
+function setBase(iso){if(!can('mgmt'))return;const s=DB.get('settings','app')||{id:'app'};DB.put('settings',{...s,base:iso});closeSheet(true);toast(L('结算货币已设为 ','Settlement currency: ')+symOf(iso)+' '+iso,false);render(false)}
