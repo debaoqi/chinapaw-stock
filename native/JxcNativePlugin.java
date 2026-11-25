@@ -11,6 +11,15 @@ import android.app.PendingIntent;
 import android.provider.MediaStore;
 import androidx.core.content.FileProvider;
 import android.media.MediaRecorder;
+import android.media.AudioRecord;
+import android.media.AudioFormat;
+import android.media.MediaRecorder.AudioSource;
+import android.os.ParcelFileDescriptor;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognitionListener;
+import java.io.FileOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.util.Base64;
@@ -72,6 +81,15 @@ import java.util.Map;
 public class JxcNativePlugin extends Plugin {
 
     private MediaRecorder voiceRecorder;
+    private volatile boolean liveRecording;
+    private AudioRecord pcmRecorder;
+    private SpeechRecognizer liveRecognizer;
+    private ParcelFileDescriptor[] speechPipe;
+    private Thread pcmWorker;
+    private ByteArrayOutputStream pcmBytes;
+    private volatile String liveText = "";
+    private volatile String liveFinal = "";
+    private volatile String liveError = "";
     private File voiceFile;
     private long voiceStarted;
     private TextToSpeech speech;
@@ -80,13 +98,14 @@ public class JxcNativePlugin extends Plugin {
 
     @PluginMethod
     public void voiceCapabilities(PluginCall call) {
-        JSObject o = new JSObject(); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
+        JSObject o = new JSObject(); o.put("live", Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isRecognitionAvailable(getContext())); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
     }
 
     @PluginMethod
     public synchronized void startVoice(PluginCall call) {
         if (getPermissionState("microphone") != PermissionState.GRANTED) { call.reject("请允许麦克风权限", "DENIED"); return; }
-        if (voiceRecorder != null) { call.reject("正在录音"); return; }
+        if (voiceRecorder != null || liveRecording) { call.reject("正在录音"); return; }
+        if (Build.VERSION.SDK_INT >= 33 && call.getBoolean("transcribe", false)) { startPcmVoice(call); return; }
         try {
             voiceFile = File.createTempFile("jxc-voice-", ".m4a", getContext().getCacheDir());
             voiceRecorder = new MediaRecorder();
@@ -108,6 +127,7 @@ public class JxcNativePlugin extends Plugin {
 
     @PluginMethod
     public synchronized void stopVoice(PluginCall call) {
+        if (liveRecording) { stopPcmVoice(call); return; }
         if (voiceRecorder == null) { call.reject("没有正在进行的录音"); return; }
         try {
             voiceRecorder.stop();
@@ -122,6 +142,70 @@ public class JxcNativePlugin extends Plugin {
             call.resolve(o);
         } catch (Exception e) { if (call.getBoolean("cancel", false)) call.resolve(); else call.reject("录音未完成，请重试"); }
         finally { releaseVoice(); }
+    }
+
+    @PluginMethod
+    public void voiceTranscript(PluginCall call) {
+        JSObject out=new JSObject();out.put("text",liveText);out.put("error",liveError);call.resolve(out);
+    }
+
+    // One microphone owner: feed the exact recorded PCM to Android 13+ recognition.
+    // Starting MediaRecorder and SpeechRecognizer on separate microphone sessions silences one on many phones.
+    private void startPcmVoice(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                liveText="";liveFinal="";liveError="";pcmBytes=new ByteArrayOutputStream();speechPipe=ParcelFileDescriptor.createPipe();
+                liveRecognizer=SpeechRecognizer.createSpeechRecognizer(getContext());
+                liveRecognizer.setRecognitionListener(new RecognitionListener() {
+                    public void onReadyForSpeech(Bundle b) {} public void onBeginningOfSpeech() {} public void onRmsChanged(float r) {}
+                    public void onBufferReceived(byte[] b) {} public void onEndOfSpeech() {} public void onEvent(int t,Bundle b) {}
+                    public void onError(int e) { liveError="Recognition error "+e; }
+                    private void text(Bundle b) { ArrayList<String> a=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(a!=null&&!a.isEmpty())liveText=liveFinal+a.get(0); }
+                    public void onResults(Bundle b) { text(b); } public void onPartialResults(Bundle b) { text(b); }
+                    public void onSegmentResults(Bundle b) { text(b);liveFinal=liveText+" "; }
+                });
+                Intent i=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE,call.getString("lang","zh-CN"));i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);
+                i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE,speechPipe[0]);
+                i.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,RecognizerIntent.EXTRA_AUDIO_SOURCE);
+                i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT,1);
+                i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,AudioFormat.ENCODING_PCM_16BIT);
+                i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE,16000);
+                liveRecognizer.startListening(i);
+                int size=Math.max(6400,AudioRecord.getMinBufferSize(16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT));
+                pcmRecorder=new AudioRecord(AudioSource.MIC,16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,size);
+                if(pcmRecorder.getState()!=AudioRecord.STATE_INITIALIZED)throw new Exception("Microphone unavailable");
+                liveRecording=true;voiceStarted=System.currentTimeMillis();pcmRecorder.startRecording();
+                pcmWorker=new Thread(() -> {
+                    try(FileOutputStream pipe=new FileOutputStream(speechPipe[1].getFileDescriptor())) {
+                        byte[] b=new byte[3200];while(liveRecording) { int n=pcmRecorder.read(b,0,b.length);if(n>0){pcmBytes.write(b,0,n);try{pipe.write(b,0,n);}catch(Exception e){liveError="Recognition service stopped";}}else break; }
+                    }catch(Exception e){liveError=e.getMessage();}
+                },"jxc-speech-pcm");pcmWorker.start();call.resolve();
+            }catch(Exception e){releasePcmVoice();call.reject("实时语音启动失败："+e.getMessage());}
+        });
+    }
+
+    private void releasePcmVoice() {
+        liveRecording=false;
+        if(pcmRecorder!=null){try{pcmRecorder.stop();}catch(Exception ignored){}try{if(pcmWorker!=null)pcmWorker.join(1500);}catch(Exception ignored){}pcmRecorder.release();pcmRecorder=null;}
+        if(speechPipe!=null){for(ParcelFileDescriptor p:speechPipe)try{p.close();}catch(Exception ignored){}speechPipe=null;}
+        if(liveRecognizer!=null){getActivity().runOnUiThread(()->{if(liveRecognizer!=null){liveRecognizer.destroy();liveRecognizer=null;}});}
+    }
+
+    private void stopPcmVoice(PluginCall call) {
+        liveRecording=false;
+        try{if(pcmRecorder!=null)pcmRecorder.stop();}catch(Exception ignored){}
+        new Thread(()->{
+            try{if(pcmWorker!=null)pcmWorker.join(1800);Thread.sleep(900);
+                JSObject out=new JSObject();out.put("text",liveText);out.put("recognitionError",liveError);
+                if(!call.getBoolean("cancel",false)){
+                    byte[] pcm=pcmBytes.toByteArray();ByteBuffer w=ByteBuffer.allocate(44+pcm.length).order(ByteOrder.LITTLE_ENDIAN);
+                    w.put(new byte[]{82,73,70,70});w.putInt(36+pcm.length);w.put(new byte[]{87,65,86,69,102,109,116,32});w.putInt(16);w.putShort((short)1);w.putShort((short)1);w.putInt(16000);w.putInt(32000);w.putShort((short)2);w.putShort((short)16);w.put(new byte[]{100,97,116,97});w.putInt(pcm.length);w.put(pcm);
+                    out.put("data","data:audio/wav;base64,"+Base64.encodeToString(w.array(),Base64.NO_WRAP));
+                }call.resolve(out);
+            }catch(Exception e){call.reject("录音保存失败："+e.getMessage());}finally{releasePcmVoice();}
+        },"jxc-speech-finish").start();
     }
 
     @PluginMethod
@@ -172,7 +256,8 @@ public class JxcNativePlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         releaseVoice();
-        clearCheckinPhoto();
+        releasePcmVoice();
+        // Pending camera output survives activity recreation; callback cleans it after delivery.
         if (speech != null) { speech.stop(); speech.shutdown(); speech = null; }
         if (speechPending != null) { speechPending.reject("App 已关闭"); speechPending = null; }
         super.handleOnDestroy();
@@ -187,6 +272,7 @@ public class JxcNativePlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             try {
                 checkinPhoto = File.createTempFile("jxc-checkin-", ".jpg", getContext().getCacheDir());
+                getContext().getSharedPreferences("jxc-camera",Context.MODE_PRIVATE).edit().putString("pending",checkinPhoto.getAbsolutePath()).apply();
                 Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", checkinPhoto);
                 Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
                 intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
@@ -196,11 +282,12 @@ public class JxcNativePlugin extends Plugin {
         });
     }
 
-    private void clearCheckinPhoto() { if (checkinPhoto != null) { checkinPhoto.delete(); checkinPhoto = null; } }
+    private void clearCheckinPhoto() { if (checkinPhoto != null) { checkinPhoto.delete(); checkinPhoto = null; } getContext().getSharedPreferences("jxc-camera",Context.MODE_PRIVATE).edit().remove("pending").apply(); }
 
     @ActivityCallback
     private void checkinPhotoResult(PluginCall call, ActivityResult result) {
         if (call == null) { clearCheckinPhoto(); return; }
+        if(checkinPhoto==null){String path=getContext().getSharedPreferences("jxc-camera",Context.MODE_PRIVATE).getString("pending","");if(!path.isEmpty()){File restored=new File(path);try{if(restored.getCanonicalPath().startsWith(getContext().getCacheDir().getCanonicalPath()+File.separator))checkinPhoto=restored;}catch(Exception ignored){}}}
         try {
             JSObject out = new JSObject();
             if (result.getResultCode() != Activity.RESULT_OK || checkinPhoto == null || checkinPhoto.length() == 0) { out.put("cancelled", true); call.resolve(out); return; }

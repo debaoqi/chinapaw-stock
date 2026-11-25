@@ -41,8 +41,8 @@ public final class JxcUnreadNotifications {
         if(nm==null)return false;
         if(count==0){nm.cancel(1800);return true;}
         if(Build.VERSION.SDK_INT>=33&&c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return false;
-        String channel="jxc-unread-v1";
-        if(Build.VERSION.SDK_INT>=26){NotificationChannel ch=new NotificationChannel(channel,"未读消息与业务提交",NotificationManager.IMPORTANCE_DEFAULT);ch.setShowBadge(true);nm.createNotificationChannel(ch);}
+        String channel="jxc-unread-sound-v2";
+        if(Build.VERSION.SDK_INT>=26){NotificationChannel ch=new NotificationChannel(channel,"未读消息与业务提交",NotificationManager.IMPORTANCE_HIGH);ch.setShowBadge(true);ch.enableVibration(true);ch.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build());nm.createNotificationChannel(ch);}
         Intent intent=c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());if(intent==null)return false;
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent open=PendingIntent.getActivity(c,1800,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
@@ -50,7 +50,7 @@ public final class JxcUnreadNotifications {
         b.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("华宝进销存 · 未读提醒")
             .setContentText(text.isEmpty()?count+" 条未读消息 / 业务通知":text).setNumber(count)
             .setContentIntent(open).setOnlyAlertOnce(onlyOnce).setAutoCancel(false)
-            .setCategory(Notification.CATEGORY_MESSAGE).setVisibility(Notification.VISIBILITY_PRIVATE);
+            .setDefaults(onlyOnce?0:Notification.DEFAULT_SOUND|Notification.DEFAULT_VIBRATE).setCategory(Notification.CATEGORY_MESSAGE).setVisibility(Notification.VISIBILITY_PRIVATE);
         nm.notify(1800,b.build());return true;
     }
 }
