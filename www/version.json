@@ -1,27 +1,25 @@
 {
-  "version": "1.6.0",
-  "build": 14,
+  "version": "1.8.0",
+  "build": 16,
   "date": "2026-11-25",
   "force": false,
-  "minNative": 3,
+  "minNative": 5,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "除总经办外，所有部门人员都可以考勤打卡：自动定位 + 直接打开相机拍现场照片（带水印）；总经办可看全员打卡汇总",
-      "定位更稳：App 直接用手机 GPS；GPS 关着时一键打开开关 / 权限；实在定不到时用网络大致位置并标记",
-      "App 第一次打开时一次性申请定位、相机、麦克风权限，以后不再问；“我的 → 手机权限”可随时查看和打开",
-      "打印：App 里调用系统打印，自动搜索同一 WiFi 的网络打印机；“我的 → 打印机”可搜索打印机、打印测试页",
-      "财务确认收款：已全额收款的订单直接“核对无误，放行”，多收时提醒检查重复登记"
+      "原总经理调整为董事长，新增独立总经理职位",
+      "除董事长外全员拍照打卡，新增系统相机拍摄入口",
+      "群聊和业务通知未读图标提示，阅读后自动清除",
+      "保留 v1.7.0 的出库、赊销、采购入库和费用审批修复"
     ],
     "en": [
-      "Everyone except the GM office can check in: GPS + in-app camera photo with watermark; the GM office sees everyone's records",
-      "More reliable location: native GPS in the app, one-tap GPS / permission settings, approximate network location as a flagged fallback",
-      "The app asks for location, camera and microphone once on first start; Me → Phone permissions shows and fixes them",
-      "Printing: system print in the app finds WiFi network printers automatically; Me → Printers searches printers and prints a test page",
-      "Finance: fully paid orders can be released directly; over-payments are flagged"
+      "Chairman and separate general manager roles",
+      "Photo check-in for all roles except chairman",
+      "Unread chat and business-notification badge",
+      "Includes the v1.7.0 workflow fixes"
     ]
   }
 }
