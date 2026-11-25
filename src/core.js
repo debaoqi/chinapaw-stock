@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.5.0',APP_BUILD=13;
+const APP_VER='1.6.0',APP_BUILD=14;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -103,7 +103,7 @@ const ROLES={
    att 外勤打卡 · att_view 查看考勤（总经理 / 销售经理 / 运营经理）
    so_fin 销售单财务审核（确认收款 / 赊账初审）· tk_fin 盘点财务复核 · tk_final 盘点终审（运营经理 / 总经理）
    exp_approve 特殊费用审批（总经理 / 运营经理）· exp_book 费用入账（会计）· 付费用由出纳（fin_pay） */
-ROLES.sales.p.push('att_view');ROLES.acct.p.push('so_fin','tk_fin','exp_book');
+ROLES.sales.p.push('att_view');['buyer','sales','keeper','acct','cashier'].forEach(r=>{if(!ROLES[r].p.includes('att'))ROLES[r].p.push('att')});ROLES.acct.p.push('so_fin','tk_fin','exp_book');
 const ROLE_ORDER=['gm','ops','buyer','sales','field','keeper','acct','cashier'];
 function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 /* 职位本身的权限（不含总经理的“全部权限”）：财务复核、出纳付款等环节只属于对应职位，互相制约 */

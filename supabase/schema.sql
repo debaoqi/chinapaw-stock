@@ -106,7 +106,7 @@ language sql immutable as $$
   select case
     when p_k='users' then false
     when p_k in ('chat','msg','exp') then true                       -- 沟通、费用：人人可用，具体步骤由 jxc_flow_ok 检查
-    when p_k='att' then p_role in ('field','sales','gm')              -- 外勤打卡
+    when p_k='att' then p_role in ('field','sales','gm','buyer','keeper','acct','cashier','ops')   -- 考勤打卡：所有岗位
     when p_role='gm' then true
     when p_k in ('settings','wh') then false
     when p_role='ops'    then p_k in ('counts','ships','svc') or (p_k='moves' and p_d->>'type'='adj')

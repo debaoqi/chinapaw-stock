@@ -3,7 +3,7 @@ import asyncio
 from playwright.async_api import async_playwright
 CODES=['111111','888888','222222','333333','777777','444444','555555','666666']
 SHEETS=["soFin((DB.all('so').find(s=>s.status==='submitted')||{}).id)","soHead&&soGm((DB.all('so').find(s=>s.status==='submitted')||{}).id)","finPaySheet((DB.all('fin').find(f=>f.type==='pay'&&f.status==='approved')||{}).id)",
- "expNew()","pwAllSheet()","acctSheet('U2')","prodEdit('P1')","catSheet()","grpSheet()","chMore()","redeemSheet()","platformSheet()","resetSheet()","locHelp('x',true)","curSheet()",
+ "expNew()","pwAllSheet()","acctSheet('U2')","prodEdit('P1')","catSheet()","grpSheet()","chMore()","redeemSheet()","platformSheet()","resetSheet()","locHelp(locErr('off'),false)","permSheet()","micHelp()","curSheet()",
  "shipSheet((DB.all('so').find(s=>s.status==='approved')||DB.all('so')[0]).id)","printDoc('so',DB.all('so')[0].id)","payReqSheet(apDocs()[0].id)","payGm((DB.all('fin').find(f=>f.type==='pay'&&f.status==='req')||{}).id)"]
 CHECK="""(()=>{const W=innerWidth,bad=[];document.querySelectorAll('#screen *, #fixed *, #sheet *, nav *').forEach(e=>{if(!e.offsetParent||e.closest('.chips,iframe,#msgs,.bars'))return;const r=e.getBoundingClientRect();if(!r.width)return;
   if(r.right>W+1)bad.push('OUT '+(e.className||e.tagName)+':'+(e.innerText||'').slice(0,14));

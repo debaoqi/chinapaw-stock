@@ -1,45 +1,27 @@
 {
-  "version": "1.5.0",
-  "build": 13,
-  "date": "2026-11-24",
+  "version": "1.6.0",
+  "build": 14,
+  "date": "2026-11-25",
   "force": false,
-  "minNative": 1,
+  "minNative": 3,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "所有账号统一密码 666666（新账号也默认 666666），总经理可在“账号与密码”为某人重设或一键统一重设；同一职位多人时登录页选择本人姓名",
-      "私聊和群聊增加语音：按住说话、上滑取消，最长 60 秒；自动语音转文字并翻译成中 / 英文；点击播放",
-      "发送位置附带谷歌地图链接（点击打开、可复制）；定位被关闭时显示开启方法，也可手动输入地址发送；安卓安装包加入定位和麦克风权限；删除“关于”",
-      "输入框提示改为一行、字号缩小",
-      "消息中英双语：每条消息都同时显示中文和英文（发送时翻译一次并保存，所有人看到同一份译文）；手机是其他语言的再多显示一行该语言",
-      "修复底部导航文字比图标偏右的问题（文字被物流时间线的样式加了左边距），现在图标与文字严格居中对齐",
-      "底部导航改为 5 个：首页 · 工作台 · 消息（中间）· 本职常用 · 我的；图标与文字居中对齐（兼容旧手机）",
-      "企业沟通：全员群、自建群、私聊（只有成员能收到），自动翻译成每个人手机的语言；图片、拍照、位置、表情、@提醒、回复、2 分钟内撤回、未读提醒",
-      "新增职位：外勤人员（销售部）、运营经理（总经办）。外勤定位打卡 + 水印照片，总经理 / 销售经理 / 运营经理可查看，考勤统计可导出",
-      "出库审批：现款 = 业务员提交 → 财务确认收款 → 仓库出库；赊账 = 业务员提交 → 财务审核 → 总经理审批 → 仓库出库",
-      "盘点审批：库管盘点 → 财务复核 → 运营经理或总经理终审，互相制约；各环节云端也会检查",
-      "销售单可选运费由对方或我方承担；采购单可加运费、清关费、其他费用（可从运费计算器带入），计入到岸成本",
-      "费用报销：办公费、外勤报销等，特殊费用由总经理或运营经理审批后报备财务；费用统计按类别和人员，报表显示净利润",
-      "打印：销售单、出库单（送货签收）、入库单（到岸成本）"
+      "除总经办外，所有部门人员都可以考勤打卡：自动定位 + 直接打开相机拍现场照片（带水印）；总经办可看全员打卡汇总",
+      "定位更稳：App 直接用手机 GPS；GPS 关着时一键打开开关 / 权限；实在定不到时用网络大致位置并标记",
+      "App 第一次打开时一次性申请定位、相机、麦克风权限，以后不再问；“我的 → 手机权限”可随时查看和打开",
+      "打印：App 里调用系统打印，自动搜索同一 WiFi 的网络打印机；“我的 → 打印机”可搜索打印机、打印测试页",
+      "财务确认收款：已全额收款的订单直接“核对无误，放行”，多收时提醒检查重复登记"
     ],
     "en": [
-      "All accounts use password 666666 (new ones too); the GM can reset one person or everyone; people in the same position pick their name at sign-in",
-      "Voice messages in chats: hold to talk, slide up to cancel, up to 60 s; speech-to-text with Chinese / English translation",
-      "Location messages include a Google Maps link; help when location is off, or type an address; Android app adds location & microphone permissions; removed “About”",
-      "Chat input hint on one line, smaller",
-      "Bilingual chat: every message shows Chinese and English together (translated once when sent, the same for everyone), plus the reader’s own language if different",
-      "Fixed bottom-bar labels sitting to the right of their icons",
-      "Bottom bar: 5 tabs with Chat in the middle; icons centred on all phones",
-      "Company chat: everyone group, custom groups, private chats, auto-translation, photos, location, emoji, @mentions, reply, recall",
-      "New positions: Field Sales and Operations Manager; GPS check-in with watermarked photo and attendance statistics",
-      "Shipping approval: cash = sales → finance confirms payment → warehouse; credit = sales → finance → GM → warehouse",
-      "Stock counts: warehouse → finance → operations / GM",
-      "Freight payer on sales orders; extra costs on purchase orders go into landed cost",
-      "Expense claims with special approval and statistics; net profit in reports",
-      "Printable sales order, delivery note and goods received note"
+      "Everyone except the GM office can check in: GPS + in-app camera photo with watermark; the GM office sees everyone's records",
+      "More reliable location: native GPS in the app, one-tap GPS / permission settings, approximate network location as a flagged fallback",
+      "The app asks for location, camera and microphone once on first start; Me → Phone permissions shows and fixes them",
+      "Printing: system print in the app finds WiFi network printers automatically; Me → Printers searches printers and prints a test page",
+      "Finance: fully paid orders can be released directly; over-payments are flagged"
     ]
   }
 }

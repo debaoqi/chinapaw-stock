@@ -2,9 +2,9 @@
 const V={};
 const WEB=document.body.classList.contains('web'),ADMIN=document.body.classList.contains('admin');const LOGO=window.LOGO_DATA||'logo.svg';
 /* 每个页面需要的权限：没有权限直接回首页，部门之间不能越界 */
-const NEED={docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'po_recv',recv:'po_recv',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
+const NEED={printers:null,docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'po_recv',recv:'po_recv',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
   att:'att',att_stats:'att_view',exp_stats:'_exps',mgmt:'mgmt',m_users:'mgmt',m_stores:'mgmt',m_products:'mgmt',m_partners:'_pt',m_settings:'mgmt',m_backup:'mgmt',m_log:'mgmt'};
-const LIVE=new Set(['chat','work','att','att_stats','exp','exp_stats','home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
+const LIVE=new Set(['printers','chat','work','att','att_stats','exp','exp_stats','home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
 const whName=id=>nm((DB.get('wh',id)||{}).n)||id||'';
 const ptName=id=>nmP((DB.get('partners',id)||{}).n)||'—';
 const P_=id=>DB.get('products',id)||{n:{zh:'已删除商品',en:'Deleted item'},unit:{zh:'',en:''}};
@@ -152,10 +152,40 @@ V.login=()=>{if(S.lgRole===undefined){S.lgRole=LS.get('lgRole',null);S.lgPos=LS.
   </div>`};
 async function doLogin(){const pw=$('#lgPw').value;const e=$('#lgErr');const ppl=lgPeople();if(ppl.length>1&&!ppl.some(u=>u.id===S.lgUid)){e.textContent=L('请选择人员','Choose your name');return}if(!S.lgDept){e.textContent=L('请先选择部门','Choose your department first');return}if(!S.lgRole){e.textContent=L('请选择职位','Choose your position');return}if(!pw){e.textContent=L('请输入密码','Enter your password');return}
   e.textContent='';try{await login(pw,LS.get('trust',true),S.lgRole,ppl.length>1?S.lgUid:(ppl[0]||{}).id||null);afterLogin()}catch(x){e.textContent=x.message;$('#lgPw').select()}}
-function afterLogin(){
+function afterLogin(){setTimeout(()=>permAsk(false),1500);
   S.hist=[];S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first();Alerts.low(false);render(true);Sync.run('boot');toast(L('欢迎，','Welcome, ')+nmP(S.me.name)+' · '+userTitle(S.me),false)}
 function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?')}</div><div class="sm muted" style="margin-top:6px">${DB.outbox.length?L(`还有 ${DB.outbox.length} 条记录未提交，下次登录后继续提交。`,`${DB.outbox.length} change(s) not yet submitted; they will be sent next time you sign in.`):L('退出后需要重新输入密码登录。','You will need your password to sign in again.')}</div>
   <div class="row gap" style="margin-top:18px"><button class="bigbtn ghost" onclick="closeSheet()">${L('取消','Cancel')}</button><button class="bigbtn red" onclick="closeSheet();logout();S.view='login';render(true)">${L('退出','Sign out')}</button></div>`)}
+
+
+/* ================= 手机原生能力（安卓 App）：权限、定位、打印、搜索打印机 ================= */
+function NX(){try{const P=window.Capacitor&&window.Capacitor.Plugins;return P&&P.JxcNative||null}catch(e){return null}}
+/* 申请权限：App 里弹系统的“允许”对话框（只问一次，以后不再问）；网页里由浏览器在第一次使用时询问 */
+async function nativePerms(list){const n=NX();if(!n)return {};const st=await n.checkPerms();const need=list.filter(k=>st[k]!=='granted');if(!need.length)return st;return await n.requestPerms({list:need})}
+async function permAsk(force){const n=NX();if(!n||!S.me)return;const k='permAsked';if(!force&&LS.get(k,0))return;LS.set(k,1);
+  try{const st=await n.checkPerms();const need=['location','camera','microphone'].filter(x=>st[x]!=='granted');if(!need.length)return;
+    openSheet(`<div class="sh">${L('允许 3 个手机权限','Allow 3 phone permissions')}</div><div class="sm" style="margin-top:8px;line-height:1.8">${L('接下来手机会依次弹出窗口，请都点“允许 / 仅在使用中允许”：<br>· <b>位置信息</b>：考勤打卡、发送位置<br>· <b>相机</b>：打卡拍现场照片、拍商品图<br>· <b>麦克风</b>：发语音消息<br>只需要允许这一次，以后使用时不会再问。','Your phone will now ask three times — tap “Allow / While using the app” each time:<br>· <b>Location</b>: check-in, share location<br>· <b>Camera</b>: check-in photo, product photos<br>· <b>Microphone</b>: voice messages<br>You only need to do this once.')}</div>
+     <button class="bigbtn" style="width:100%;margin-top:14px" onclick="closeSheet(true);nativePerms(['location','camera','microphone']).then(()=>toast(L('已设置好','All set'),false)).catch(()=>{})">${ic('check',18)} ${L('好的，开始','OK, go')}</button>`)}catch(e){}}
+function permSheet(){const n=NX();if(!n){openSheet(`<div class="sh">${L('手机权限','Phone permissions')}</div><div class="sm" style="margin-top:8px;line-height:1.8">${isNative()?L('您的安装包是旧版，请安装最新版：新版打开后会自动申请定位、相机、麦克风权限。','This is an old app build — install the latest APK; it asks for location, camera and microphone automatically.')+`<button class="bigbtn" style="width:100%;margin-top:12px" onclick="closeSheet(true);checkUpdate(true)">${ic('refresh',18)} ${L('检查更新','Check for updates')}</button>`:L('网页版在第一次用到时由浏览器询问，点“允许”即可。<br>如果之前点了“拒绝”：Chrome 点地址栏左边的图标 → 权限，把位置、相机、麦克风改成“允许”，再刷新页面。<br>微信里打开的网页不支持定位和录音，请点“…”选“在浏览器打开”。','The browser asks the first time each feature is used — tap Allow.<br>If you tapped Block before: tap the icon left of the address → Permissions → allow Location, Camera and Microphone, then reload.<br>Pages opened inside WeChat cannot use location or recording — open them in Chrome.')}</div>`);return}
+  n.checkPerms().then(st=>{const lab={location:[L('位置信息','Location'),L('考勤打卡、发送位置','Check-in, share location')],camera:[L('相机','Camera'),L('打卡拍照、商品图片','Check-in photos, product photos')],microphone:[L('麦克风','Microphone'),L('语音消息','Voice messages')]};
+    openSheet(`<div class="sh">${L('手机权限','Phone permissions')}</div><div class="box" style="padding:4px 16px;margin-top:10px">${Object.keys(lab).map(k=>`<div class="li"><div style="flex:1;min-width:0"><div class="b sm">${lab[k][0]}</div><div class="xs muted">${lab[k][1]}</div></div>${st[k]==='granted'?`<span class="badge b-green">${L('已允许','Allowed')}</span>`:`<button class="pill g" onclick="nativePerms(['${k}']).then(r=>{if(r&&r['${k}']!=='granted')NX().openAppSettings();permSheet()})">${L('允许','Allow')}</button>`}</div>`).join('')}</div>
+     <div class="xs muted" style="margin-top:10px;line-height:1.6">${L('如果点“允许”没有弹窗（之前选过“不再询问”），会直接打开本 App 的权限页面，把对应项改成“允许”即可。','If no prompt appears (you chose “Don’t ask again” before), the app’s permission page opens — switch the item to Allow.')}</div>
+     <div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openAppSettings()">${L('权限页面','Permission page')}</button><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openLocationSettings()">${L('GPS 开关','GPS switch')}</button></div>`)}).catch(()=>{})}
+function micHelp(){const n=NX();openSheet(`<div class="sh">${L('麦克风没有打开','Microphone is not allowed')}</div>
+  <div class="sm" style="margin-top:8px;line-height:1.8">${n?L('点下面“打开麦克风权限”，在“权限 → 麦克风”里选“仅在使用中允许”，返回后就能发语音。','Tap below → Permissions → Microphone → “Allow while using the app”, then come back.'):isNative()?L('您的安装包是旧版，请安装最新版（会自动申请麦克风权限）。','Old app build — install the latest APK (it asks for the microphone automatically).'):L('Chrome：点地址栏左边的图标 → 权限 → 麦克风 → 允许，然后刷新。微信里打开的网页不能录音，请用 Chrome 打开。','Chrome: tap the icon left of the address → Permissions → Microphone → Allow, then reload. Pages inside WeChat cannot record — use Chrome.')}</div>
+  <div class="note-g" style="margin-top:10px">${L('不想开权限也可以：点输入框，用手机键盘上的 🎤 语音输入，说完自动变成文字，同样会自动翻译。这个不需要本软件的任何权限。','No permission needed alternative: tap the text box and use the 🎤 on your phone keyboard — speech becomes text and is translated as usual.')}</div>
+  ${n?`<button class="bigbtn" style="width:100%;margin-top:12px" onclick="nativePerms(['microphone']).then(r=>{if(r&&r.microphone!=='granted')NX().openAppSettings();else closeSheet(true)})">${ic('mic',18)} ${L('打开麦克风权限','Allow microphone')}</button>`:''}`)}
+V.printers=()=>{const n=NX();const P=S.prn||{};
+  return hdr(L('打印机','Printers'))+`<div class="pad">
+   <div class="box"><div class="b">${L('WiFi 网络打印机','WiFi network printers')}</div><div class="sm muted" style="margin-top:6px;line-height:1.7">${L('打印机和手机连同一个 WiFi 即可，不用装驱动。打印单据时，系统会自动搜索网络里的打印机，选中后打印；选过一次以后会默认用它。','Put the printer and phone on the same WiFi — no driver needed. When you print, the system searches the network automatically; pick the printer once and it becomes the default.')}</div>
+    ${n?`<button class="bigbtn" style="width:100%;margin-top:12px;height:48px" onclick="prnScan()">${ic('refresh',18)} ${P.busy?L('正在搜索…','Searching…'):L('搜索 WiFi 打印机','Search WiFi printers')}</button>
+     ${P.list?`<div style="margin-top:10px">${P.list.length?P.list.map(p=>`<div class="li"><div class="qi">${ic('print',18)}</div><div style="flex:1;min-width:0"><div class="b sm one">${esc(p.name)}</div><div class="xs muted one" data-notr>${esc(p.type||'')}${p.host?' · '+esc(p.host):''}</div></div><span class="badge b-green">${L('已找到','Found')}</span></div>`).join(''):`<div class="note-r">${L('没有找到。请确认打印机已开机、已连上 WiFi，并和手机在同一个 WiFi。','Nothing found. Check the printer is on, connected to WiFi, and on the same network as this phone.')}</div>`}</div>`:''}
+     <button class="bigbtn ghost" style="width:100%;margin-top:10px;height:48px" onclick="prnTest()">${ic('print',18)} ${L('打印测试页','Print a test page')}</button>`
+    :`<button class="bigbtn ghost" style="width:100%;margin-top:12px;height:48px" onclick="prnTest()">${ic('print',18)} ${L('打印测试页','Print a test page')}</button>`}</div>
+   <div class="sec-h">${L('第一次使用','First-time setup')}</div><div class="box sm" style="line-height:1.9">
+    ${L('1. 打印机连上公司 WiFi（打印机面板上的 WiFi 设置，或用 WPS 按钮）。<br>2. 手机连同一个 WiFi。<br>3. 安卓手机：“设置 → 连接的设备 → 打印”，打开“默认打印服务”（或安装 Mopria Print Service / 打印机品牌插件，如 HP、Canon、Epson）。<br>4. 回到这里点“打印测试页”，在弹出的页面顶部选您的打印机。','1. Connect the printer to the office WiFi (printer panel WiFi setup, or the WPS button).<br>2. Connect the phone to the same WiFi.<br>3. Android: Settings → Connected devices → Printing → turn on “Default Print Service” (or install Mopria Print Service / the HP, Canon or Epson plugin).<br>4. Come back and tap “Print a test page”, then choose your printer at the top.')}</div></div>`};
+async function prnScan(){const n=NX();if(!n)return;S.prn={busy:true,list:(S.prn||{}).list};render(false);try{const r=await n.findPrinters({timeout:6000});S.prn={list:(r&&r.printers)||[]}}catch(e){S.prn={list:[]};toast(String(e&&e.message||e))}render(false)}
+function prnTest(){const co=(DB.get('settings','app')||{}).co||{};window._pvH=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${L('打印测试页','Test page')}</title><style>body{font-family:sans-serif;padding:30px}h1{font-size:22px}</style></head><body><h1>${esc(nm(co)||BRAND())}</h1><p>${L('打印机连接正常。','The printer works.')} / Printer test OK</p><p>${new Date().toLocaleString()}</p></body></html>`;pvPrint()}
 
 /* ================= 首页 ================= */
 function greet(){const h=new Date().getHours();return h<12?L('上午好','Good morning'):h<18?L('下午好','Good afternoon'):L('晚上好','Good evening')}
@@ -189,6 +219,7 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   else if(r==='acct')stats=statT('g',numK(F.arBal),L('应收余额','Receivable'),"S.finSeg='ar';tab('fin')",1)+statT('',numK(F.apBal),L('应付余额','Payable'),"S.finSeg='ap';tab('fin')")+statT(F.unverN?'y':'',F.unverN,L('待核对收款','To verify'),"S.finSeg='book';tab('fin')");
   else stats=statT('g',numK(F.rcvToday),L('今日收款','Received today'),"S.finSeg='book';tab('fin')",1)+statT(F.apprN?'y':'',F.apprN,L('待付款','To pay'),"S.finSeg='ap';tab('fin')")+statT('',numK(F.payMonth),L('本月付款','Paid this month'),"S.finSeg='book';tab('fin')");
   const todo=[];
+  if(own('att')&&!attTodayDone()&&new Date().getHours()<20)todo.unshift(['pin',L('今天还没有上班打卡','You have not checked in today'),S.me.role==='field'?"tab('att')":"go('att')",'#0E7C86']);
   if(can('so_ship')&&toShip&&r!=='keeper')todo.push(['out',L(`${toShip} 张销售单待出库`,`${toShip} order(s) to ship`),"S.docSeg='so';S.docF='approved';tab('docs')",'var(--gold)']);
   if(can('po_recv')&&toRecv&&r!=='keeper')todo.push(['in',L(`${toRecv} 张采购单待入库`,`${toRecv} PO(s) to receive`),"go('recv_pick')",'var(--green)']);
   const prP=DB.all('pr').filter(x=>x.status==='pending').length,srP=DB.all('sr').filter(x=>x.status==='pending').length;
@@ -318,11 +349,21 @@ function chMore(){openSheet(`<div class="sh">${L('发送','Send')}</div><div cla
    <div class="wtile" style="background:var(--blue)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),false)"><div class="wti">${ic('image')}</div><div class="b">${L('相册图片','Photo')}</div></div>
    <div class="wtile" style="background:var(--green)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),true)"><div class="wti">${ic('camera')}</div><div class="b">${L('拍照','Camera')}</div></div>
    <div class="wtile" style="background:var(--orange)" onclick="closeSheet(true);chLoc()"><div class="wti">${ic('pin')}</div><div class="b">${L('发送位置','Location')}</div></div></div>`)}
-async function chLoc(){toast(L('正在获取位置…','Getting location…'),false);try{const p=await getPos();const addr=await revGeo(p.lat,p.lng);chPost({loc:{lat:p.lat,lng:p.lng,acc:p.acc,addr,url:gmap(p.lat,p.lng)}})}catch(e){locHelp(e.message,true)}}
+async function chLoc(){toast(L('正在获取位置…','Getting location…'),false);try{const p=await getPos({exact:true});const addr=await revGeo(p.lat,p.lng);chPost({loc:{lat:p.lat,lng:p.lng,acc:p.acc,addr,url:gmap(p.lat,p.lng)}})}catch(e){locHelp(e,true)}}
 /* 定位不可用时：说明怎么打开定位，也可以手动输入地址（同样发送谷歌地图链接） */
-function locHelp(msg,manual){openSheet(`<div class="sh">${L('需要打开定位','Location is off')}</div><div class="note-r" style="margin-top:8px">${esc(msg)}</div>
-  <div class="sm" style="margin-top:10px;line-height:1.8">${isNative()?L('安卓 App：手机“设置 → 应用 → 华宝进销存 → 权限 → 位置信息 → 允许”，并打开手机顶部的“位置信息 / GPS”开关。<br>（请先更新到最新版安装包，新版已加入定位和麦克风权限。）','Android app: Settings → Apps → this app → Permissions → Location → Allow, and switch on Location / GPS.<br>(Install the latest APK — it adds location and microphone permissions.)'):L('浏览器：点地址栏左边的锁形图标 → 权限 → 位置 → 允许，然后刷新页面；并打开手机的“位置信息 / GPS”。','Browser: tap the lock icon by the address → Permissions → Location → Allow, then reload; and switch on Location / GPS.')}</div>
+function locHelp(err,manual){const e=typeof err==='string'?locErr('fail'):err||locErr('fail');const k=e.kind||'fail';const n=NX();
+  const tips=n?(k==='off'?L('点下面“打开 GPS 开关”，在系统页面里打开“使用位置信息”，然后返回 App。','Tap “Turn on GPS” below, switch on “Use location”, then come back.')
+      :k==='denied'?L('点下面“打开定位权限”，进入“权限 → 位置信息”，选“仅在使用中允许”，然后返回 App。','Tap “Allow location” below → Permissions → Location → “Allow only while using the app”, then come back.')
+      :L('请到窗边或室外再试；或者先打开 GPS 开关。','Move near a window or outdoors and try again, or turn GPS on.'))
+    :isNative()?L('您的安装包是旧版，请卸载后安装最新版（新版会自动申请定位、相机、麦克风权限）。','This is an old app build — please install the latest APK (it asks for location, camera and microphone automatically).')
+    :k==='wechat'?L('请点右上角“…”，选“在浏览器打开”，用 Chrome 打开本网址再打卡。','Tap “…” at the top right → “Open in browser”, then use Chrome.')
+    :k==='denied'?L('Chrome：点地址栏左边的图标 → 权限 → 位置 → 允许，然后刷新页面。<br>如果没有这个选项：Chrome 右上角“⋮ → 设置 → 网站设置 → 位置”，把本网站改为“允许”。','Chrome: tap the icon left of the address → Permissions → Location → Allow, then reload.<br>Or Chrome ⋮ → Settings → Site settings → Location → allow this site.')
+    :L('请打开手机顶部的“位置信息 / GPS”开关，到窗边或室外再试。','Switch on Location / GPS in the quick settings and try again near a window or outdoors.');
+  openSheet(`<div class="sh">${L('定位没有成功','Location unavailable')}</div><div class="note-r" style="margin-top:8px">${esc(e.message)}</div>
+  <div class="sm" style="margin-top:10px;line-height:1.8">${tips}</div>
+  ${n?`<div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openLocationSettings()">${ic('pin',16)} ${L('打开 GPS 开关','Turn on GPS')}</button><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openAppSettings()">${ic('cog',16)} ${L('打开定位权限','Allow location')}</button></div>`:''}
   <button class="bigbtn" style="width:100%;margin-top:14px" onclick="closeSheet(true);${manual?'chLoc()':'attRetry()'}">${ic('pin',18)} ${L('已打开，重新定位','Try again')}</button>
+  ${manual?'':`<button class="bigbtn ghost" style="width:100%;margin-top:10px;height:48px" onclick="closeSheet(true);attGo(S.attLast||'in',true)">${L('暂时用网络大致位置打卡（会标记）','Use approximate network location (flagged)')}</button>`}
   ${manual?`<div class="fld"><label>${L('或手动输入地址（发送谷歌地图链接）','Or type an address (sends a Google Maps link)')}</label><input class="inp" id="locA" style="background:var(--card)" placeholder="${L('如：Adum, Kumasi','e.g. Adum, Kumasi')}"></div><button class="bigbtn ghost" style="width:100%;margin-top:10px" onclick="const a=$('#locA').value.trim();if(a.length<2)return toast(L('请输入地址','Enter an address'));closeSheet(true);chPost({loc:{addr:a,url:gmapQ(a)}})">${L('发送这个地址','Send this address')}</button>`:''}`)}
 function msgMenu(id){const m=DB.get('msg',id);if(!m||m.rc)return;const mine=m.by===meId();const canRc=mine&&Date.now()-m.t<120e3;
   openSheet(`<div class="box" style="padding:4px 16px;margin-top:6px">
@@ -332,8 +373,19 @@ function msgMenu(id){const m=DB.get('msg',id);if(!m||m.rc)return;const mine=m.by
    ${canRc?`<div class="li" onclick="DB.put('msg',{...DB.get('msg','${id}'),rc:true,text:'',img:'',thumb:'',loc:null,voice:'',tr:null});closeSheet(true);chatPaint()">${ic('ret',18)} <span class="sm b red">${L('撤回（2 分钟内）','Recall (within 2 min)')}</span></div>`:''}</div>`)}
 function viewImg(u){openSheet(`<img src="${esc(u)}" style="width:100%;border-radius:14px;margin-top:8px">`)}
 /* 定位：浏览器定位 + 反查地址（OpenStreetMap） */
-function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(new Error(L('此设备不支持定位','Location not supported')));
-  navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy||0)}),e=>rej(new Error(e.code===1?L('请在手机设置里允许定位权限','Allow location access in phone settings'):L('定位失败，请到开阔处重试','Could not get location — try again outdoors'))),{enableHighAccuracy:true,timeout:15000,maximumAge:0})})}
+function locErr(kind){const m={denied:L('定位权限没有打开','Location permission is off'),off:L('手机的“位置信息 / GPS”开关是关着的','Phone Location / GPS is switched off'),wechat:L('微信 / 应用内浏览器不支持定位','In-app browsers (WeChat etc.) cannot use location'),fail:L('暂时没有定到位置（室内信号弱）','Could not get a GPS fix (weak signal indoors)')};const e=new Error(m[kind]||m.fail);e.kind=kind;return e}
+async function ipPos(){const tryJ=async(u,f)=>{const r=await Promise.race([fetch(u),new Promise((_,j)=>setTimeout(()=>j(0),6000))]);const j=await r.json();return f(j)};
+  for(const [u,f] of [['https://ipwho.is/',j=>j&&j.success!==false&&j.latitude?{lat:+j.latitude,lng:+j.longitude,city:j.city}:null],['https://ipapi.co/json/',j=>j&&j.latitude?{lat:+j.latitude,lng:+j.longitude,city:j.city}:null]]){try{const p=await tryJ(u,f);if(p)return {lat:p.lat,lng:p.lng,acc:5000,approx:true}}catch(e){}}return null}
+async function getPos(opt={}){const n=NX();let kind='fail';S.locKind='';
+  if(n){try{await nativePerms(['location'])}catch(e){}
+    try{const r=await n.getLocation({timeout:20000});if(r&&r.lat!=null)return {lat:r.lat,lng:r.lng,acc:Math.round(r.acc||0)}}catch(e){const c=String(e&&(e.code||e.message)||'');kind=/OFF/i.test(c)?'off':/DENIED|PERM/i.test(c)?'denied':'fail'}}
+  else if(/MicroMessenger|FBAN|FBAV|Instagram/i.test(navigator.userAgent))kind='wechat';
+  if(navigator.geolocation&&(!n||kind==='fail')){const g=o=>new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy||0)}),rej,o));
+    try{return await g({enableHighAccuracy:true,timeout:12000,maximumAge:0})}catch(e){if(e&&e.code===1&&kind!=='wechat')kind='denied'}
+    if(kind!=='denied')try{return await g({enableHighAccuracy:false,timeout:15000,maximumAge:600000})}catch(e){}}
+  S.locKind=kind;if(opt.exact)throw locErr(kind);
+  const ip=await ipPos();if(ip){ip.kind=kind;return ip}
+  throw locErr(kind)}
 async function revGeo(lat,lng){try{const r=await Promise.race([fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&accept-language=${S.lang==='zh'?'zh-CN,en':S.lang}&lat=${lat}&lon=${lng}`),new Promise((_,j)=>setTimeout(()=>j(0),6000))]);const j=await r.json();return j.display_name||''}catch(e){return ''}}
 
 /* ===== 语音消息：按住说话、上滑取消（最长 60 秒）。录音同时用手机自带的语音识别转成文字，再自动翻译成中 / 英文 ===== */
@@ -342,7 +394,7 @@ const vMime=()=>{if(!window.MediaRecorder)return '';for(const m of ['audio/webm;
 const srLang=()=>({zh:'zh-CN',en:'en-GH',fr:'fr-FR',ar:'ar-EG',pt:'pt-PT',sw:'sw-KE',am:'am-ET',ha:'ha-NG',yo:'yo-NG',ig:'ig-NG',zu:'zu-ZA',af:'af-ZA'})[S.lang]||S.lang||'zh-CN';
 async function vStart(ev){ev.preventDefault();try{ev.target.setPointerCapture(ev.pointerId)}catch(e){}if(VREC)return;const mime=vMime();
   if(!mime||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return toast(L('这个手机 / 浏览器不支持录音','This phone / browser cannot record audio'));
-  let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){return toast(L('请在手机设置里允许本软件使用麦克风','Allow microphone access in phone settings'))}
+  let st;try{await nativePerms(['microphone']);st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){return micHelp()}
   const R={st,chunks:[],t0:Date.now(),y0:ev.clientY||0,cancel:false,text:'',sr:null,mime};VREC=R;
   R.mr=new MediaRecorder(st,{mimeType:mime,audioBitsPerSecond:24000});R.mr.ondataavailable=e=>{if(e.data&&e.data.size)R.chunks.push(e.data)};R.mr.start(250);
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -373,18 +425,20 @@ function vMode(on){S.cVoice=on;const t=$('#cTxtRow'),v=$('#cVoiceBtn'),mb=$('#cM
 /* ===== 外勤打卡：定位 + 带水印的现场照片（姓名、时间、地址、经纬度）。总经理、销售经理、运营经理可查看，出勤统计报给销售经理 ===== */
 const ATT_T={in:['上班打卡','Clock in'],visit:['拜访客户','Customer visit'],out:['下班打卡','Clock out']};
 const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+function attTodayDone(){return DB.all('att').some(a=>a.by===meId()&&a.type==='in'&&dayKey(a.t)===dayKey(Date.now()))}
 V.att=()=>{const mine=DB.all('att').filter(a=>a.by===meId()).sort((a,b)=>b.t-a.t);const today=mine.filter(a=>dayKey(a.t)===dayKey(Date.now()));
-  const hasIn=today.some(a=>a.type==='in'),hasOut=today.some(a=>a.type==='out');
-  const next=!hasIn?'in':!hasOut?'visit':'visit';
-  return `<div class="pad" style="padding-top:16px"><div class="ptitle">${L('外勤打卡','Field check-in')}</div>
+  const hasIn=today.some(a=>a.type==='in'),hasOut=today.some(a=>a.type==='out');const vis=['field','sales'].includes(S.me.role);
+  const next=!hasIn?'in':!hasOut?(vis?'visit':'out'):(vis?'visit':'');
+  const tabbed=S.me.role==='field'&&!S.hist.length;
+  return (tabbed?'':hdr(L('考勤打卡','Check-in')))+`<div class="pad" style="padding-top:${tabbed?16:4}px">${tabbed?`<div class="ptitle">${L('考勤打卡','Check-in')}</div>`:''}
    <div class="box" style="margin-top:12px;text-align:center;padding:22px 16px"><div class="xs muted">${new Date().toLocaleDateString(S.lang==='zh'?'zh-CN':'en-GB',{weekday:'long',month:'long',day:'numeric'})}</div>
     <div style="font-size:40px;font-weight:800;margin:6px 0" id="attClock" data-notr>${pad2(new Date().getHours())}:${pad2(new Date().getMinutes())}</div>
     <div class="row gap" style="justify-content:center;flex-wrap:wrap;margin-top:6px">
-     ${['in','visit','out'].map(k=>{const dis=k==='in'&&hasIn||k==='out'&&(hasOut||!hasIn);return `<button class="bigbtn ${k===next?'':'ghost'}" style="flex:1;min-width:92px;height:50px;font-size:14px;${dis?'opacity:.4':''}" ${dis?'disabled':''} onclick="attGo('${k}')">${ic(k==='visit'?'user':'pin',16)} ${L(ATT_T[k][0],ATT_T[k][1])}</button>`}).join('')}</div>
-    <div class="xs muted" style="margin-top:12px;line-height:1.6">${L('打卡时会自动定位并拍一张现场照片，照片上加水印（姓名、时间、地址、经纬度），总经理、销售经理和运营经理都能看到。','Each check-in records your location and a site photo with a watermark (name, time, address, coordinates). The GM, sales manager and operations manager can see it.')}</div></div>
+     ${(vis?['in','visit','out']:['in','out']).map(k=>{const dis=k==='in'&&hasIn||k==='out'&&(hasOut||!hasIn);return `<button class="bigbtn ${k===next?'':'ghost'}" style="flex:1;min-width:92px;height:50px;font-size:14px;${dis?'opacity:.4':''}" ${dis?'disabled':''} onclick="attGo('${k}')">${ic(k==='visit'?'user':'pin',16)} ${L(ATT_T[k][0],ATT_T[k][1])}</button>`}).join('')}</div>
+    <div class="xs muted" style="margin-top:12px;line-height:1.6">${L('打卡时自动定位，并用相机拍一张现场照片，照片上加水印（姓名、时间、地址、经纬度）。总经办（总经理、运营经理）能看到所有人的打卡汇总。','Each check-in records your location and a camera photo with a watermark (name, time, address, coordinates). The GM office can see everyone\'s records.')}</div></div>
    <div class="sec-h">${L('我的打卡记录','My check-ins')}</div>${attList(mine.slice(0,60),false)}</div>`};
 function attList(l,showName){return `<div class="box" style="margin-top:0;padding:4px 16px">${l.map(a=>`<div class="li" onclick="attView('${a.id}')">${a.thumb||a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none" loading="lazy">`:`<div class="qi">${ic('pin',18)}</div>`}
-  <div style="flex:1;min-width:0"><div class="b sm one">${showName?esc(userName(a.by))+' · ':''}${L(ATT_T[a.type][0],ATT_T[a.type][1])}${a.cus?' · '+esc(ptName(a.cus)):''}</div><div class="xs muted one">${fdate(a.t)}</div><div class="xs muted one">${esc(a.addr||(a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):L('未定位','No location')))}</div></div></div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有打卡记录','No check-ins yet')}</div>`}</div>`}
+  <div style="flex:1;min-width:0"><div class="b sm one">${showName?esc(userName(a.by))+' · ':''}${L(ATT_T[a.type][0],ATT_T[a.type][1])}${a.cus?' · '+esc(ptName(a.cus)):''}</div><div class="xs muted one">${fdate(a.t)}</div><div class="xs muted one">${a.approx?`<span class="red b">${L('大致位置','Approx.')}</span> · `:''}${esc(a.addr||(a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):L('未定位','No location')))}</div></div></div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有打卡记录','No check-ins yet')}</div>`}</div>`}
 function attView(id){const a=DB.get('att',id);openSheet(`<div class="sh">${L(ATT_T[a.type][0],ATT_T[a.type][1])}</div><div class="sm muted">${esc(userName(a.by))} · ${fdate(a.t)}</div>
   ${a.photo?`<img src="${esc(a.photo)}" style="width:100%;border-radius:14px;margin-top:12px">`:''}
   <div class="kv" style="margin-top:12px"><div style="grid-column:1/3"><div class="l">${L('地址','Address')}</div><div class="v">${esc(a.addr||'—')}</div></div><div><div class="l">${L('经纬度','Coordinates')}</div><div class="v" data-notr>${a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):'—'}</div></div><div><div class="l">${L('精度','Accuracy')}</div><div class="v" data-notr>${a.acc?a.acc+' m':'—'}</div></div>
@@ -392,18 +446,35 @@ function attView(id){const a=DB.get('att',id);openSheet(`<div class="sh">${L(ATT
   ${a.lat?`<div class="xs muted" style="margin-top:10px;word-break:break-all">${esc(gmap(a.lat,a.lng))}</div><div class="row gap" style="margin-top:10px"><button class="bigbtn ghost" style="flex:1" onclick="copyText('${gmap(a.lat,a.lng)}')">${ic('copy',16)} ${L('复制地图链接','Copy map link')}</button><button class="bigbtn" style="flex:1" onclick="openExt('${gmap(a.lat,a.lng)}')">${ic('pin',16)} ${L('谷歌地图','Google Maps')}</button></div>`:''}`)}
 /* 打卡：先定位，再拍照（加水印），可选客户与备注 */
 function attRetry(){attGo(S.attLast||'in')}
-async function attGo(type){S.attLast=type;toast(L('正在定位…','Getting location…'),false);let p;try{p=await getPos()}catch(e){return locHelp(e.message,false)}
+async function attGo(type,approx){S.attLast=type;toast(L('正在定位…','Getting location…'),false);let p;
+  if(approx){p=await ipPos();if(!p)return toast(L('网络定位也失败了，请检查网络','Network location failed too — check the connection'))}
+  else try{p=await getPos({exact:true})}catch(e){return locHelp(e,false)}
   const addr=await revGeo(p.lat,p.lng);S.att={type,...p,addr,photo:'',thumb:'',cus:'',note:''};attSheet()}
 function attSheet(){const a=S.att;openSheet(`<div class="sh">${L(ATT_T[a.type][0],ATT_T[a.type][1])}</div>
-  <div class="note-g" style="margin-top:8px">${ic('pin',14)} ${esc(a.addr||(a.lat.toFixed(5)+', '+a.lng.toFixed(5)))} <span class="xs muted" data-notr>±${a.acc}m</span></div>
-  <div class="ph" id="attPh" style="width:100%;height:200px;margin-top:12px;border-radius:16px" onclick="attPhoto()">${a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:100%;height:100%;object-fit:cover;border-radius:16px">`:`<div style="text-align:center">${ic('camera',28)}<div class="sm b" style="margin-top:6px">${L('拍现场照片（必拍，自动加水印）','Take a site photo (required, watermarked)')}</div></div>`}</div>
+  <div class="${a.approx?'note-r':'note-g'}" style="margin-top:8px">${ic('pin',14)} ${esc(a.addr||(a.lat.toFixed(5)+', '+a.lng.toFixed(5)))} <span class="xs muted" data-notr>±${a.acc}m</span>${a.approx?`<div class="xs" style="margin-top:4px">${S.locKind==='denied'?L('定位权限没有允许','Location permission is off'):S.locKind==='off'?L('GPS 开关没有打开','GPS is switched off'):L('GPS 暂时没有信号','No GPS signal yet')}${L('，这是网络大致位置（误差较大，会标记在打卡记录里）。',' — this is an approximate network location (flagged on the record).')} <a onclick="locHelp(locErr(S.locKind||'fail'),false)" style="text-decoration:underline">${L('打开精确定位','Fix GPS')}</a></div>`:''}</div>
+  <div class="ph" id="attPh" style="width:100%;height:200px;margin-top:12px;border-radius:16px" onclick="attPhoto()">${a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:100%;height:100%;object-fit:cover;border-radius:16px">`:`<div style="text-align:center">${ic('camera',28)}<div class="sm b" style="margin-top:6px">${L('打开相机拍现场照片（必拍，自动加水印）','Open the camera — site photo (required, watermarked)')}</div></div>`}</div>
   ${a.type==='visit'?`<div class="fld"><label>${L('拜访客户','Customer visited')}</label>${partnerSel('cus',a.cus,"S.att.cus=this.value")}</div>`:''}
   <div class="fld"><label>${L('备注（可选）','Note (optional)')}</label><input class="inp" style="background:var(--card)" value="${esc(a.note)}" oninput="S.att.note=this.value"></div>
   <button class="bigbtn" style="width:100%;margin-top:14px" onclick="attSave()">${ic('check',18)} ${L('确认打卡','Check in')}</button>`)}
-function attPhoto(){const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';
-  i.onchange=async()=>{const f=i.files[0];if(!f)return;toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
-    const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)} · ${L(ATT_T[a.type][0],ATT_T[a.type][1])}`,new Date().toLocaleString(S.lang==='zh'?'zh-CN':'en-GB'),a.addr||'',`${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} ±${a.acc}m`].filter(Boolean);
-    const [big,small]=await Promise.all([wmImg(f,1280,lines),wmImg(f,240,[])]);const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;attSheet()};i.click()}
+function attPhoto(){camShot(async f=>{toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
+    const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)} · ${L(ATT_T[a.type][0],ATT_T[a.type][1])}`,new Date().toLocaleString(S.lang==='zh'?'zh-CN':'en-GB'),a.addr||'',`${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} ±${a.acc}m${a.approx?' · '+L('网络大致位置','approx.'):''}`].filter(Boolean);
+    const [big,small]=await Promise.all([wmImg(f,1280,lines),wmImg(f,240,[])]);const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;attSheet()},()=>attSheet())}
+/* 应用内相机：直接打开摄像头拍照（不用选相册）；手机不支持时退回系统相机 */
+function camFallback(cb){const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>{const f=i.files[0];if(f)cb(f)};i.click()}
+async function camShot(cb,back){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return camFallback(cb);
+  let st;try{await nativePerms(['camera']);st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false})}catch(e){return camFallback(cb)}
+  const ov=document.createElement('div');ov.id='camOv';ov.style.cssText='position:fixed;inset:0;z-index:95;background:#000;display:flex;flex-direction:column';
+  ov.innerHTML=`<video id="camV" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;min-height:0"></video>
+   <div style="display:flex;align-items:center;justify-content:space-around;padding:18px 0 calc(22px + env(safe-area-inset-bottom));background:#000">
+    <button id="camX" style="color:#fff;font-size:15px;font-weight:700;width:80px">${L('取消','Cancel')}</button>
+    <button id="camS" aria-label="shutter" style="width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #9a9a9a"></button>
+    <button id="camF" style="color:#fff;font-size:15px;font-weight:700;width:80px">${L('翻转','Flip')}</button></div>`;
+  document.body.appendChild(ov);const v=$('#camV');v.srcObject=st;let face='environment';
+  const stop=()=>{st.getTracks().forEach(t=>t.stop());ov.remove()};
+  $('#camX').onclick=()=>{stop();back&&back()};
+  $('#camF').onclick=async()=>{face=face==='environment'?'user':'environment';st.getTracks().forEach(t=>t.stop());try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:face},audio:false});v.srcObject=st}catch(e){}};
+  $('#camS').onclick=()=>{const w=v.videoWidth,h=v.videoHeight;if(!w)return;const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(v,0,0,w,h);
+    cv.toBlob(b=>{stop();if(b)cb(b)},'image/jpeg',.9)}}
 /* 水印：照片底部半透明黑条 + 白字（姓名职位、时间、地址、经纬度） */
 function wmImg(f,max,lines){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
   const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);if(lines.length){const fs=Math.max(14,Math.round(c.width/34)),lh=fs*1.35;const wrap=[];x.font=`600 ${fs}px sans-serif`;
@@ -412,10 +483,10 @@ function wmImg(f,max,lines){return new Promise(res=>{const r=new FileReader();r.
     x.fillStyle='#F2B705';x.fillRect(0,c.height-h,Math.max(6,fs/3),h)}
   res(c.toDataURL('image/jpeg',.82))};im.src=r.result};r.readAsDataURL(f)})}
 function attSave(){const a=S.att;if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
-  DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);toast(L('打卡成功','Checked in'),false);render(false)}
+  DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,approx:!!a.approx,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);toast(L('打卡成功','Checked in'),false);render(false)}
 /* 考勤统计：按人、按月；出勤天数、首次 / 末次打卡、拜访次数；点人看明细 */
 V.att_stats=()=>{const m=S.attM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
-  const rs=DB.all('att').filter(a=>a.t>=from&&a.t<to);const staff=DB.all('users').filter(u=>u.active!==false&&(ROLES[u.role].p==='*'?false:ROLES[u.role].p.includes('att')));
+  const rs=DB.all('att').filter(a=>a.t>=from&&a.t<to);const staff=DB.all('users').filter(u=>u.active!==false&&own('att',u)&&(S.me.role!=='sales'||['sales','field'].includes(u.role))).sort((x,y)=>Object.keys(ROLES).indexOf(x.role)-Object.keys(ROLES).indexOf(y.role));
   const ws=+((DB.get('settings','app')||{}).workStart||9);
   const row=u=>{const l=rs.filter(a=>a.by===u.id);const days=[...new Set(l.filter(a=>a.type==='in').map(a=>dayKey(a.t)))];const late=days.filter(d=>{const f=l.filter(a=>a.type==='in'&&dayKey(a.t)===d).sort((a,b)=>a.t-b.t)[0];const h=new Date(f.t);return h.getHours()+h.getMinutes()/60>ws+0.25}).length;
     return {u,days:days.length,late,visit:l.filter(a=>a.type==='visit').length,out:new Set(l.filter(a=>a.type==='out').map(a=>dayKey(a.t))).size,last:l.sort((a,b)=>b.t-a.t)[0]}};
@@ -424,7 +495,7 @@ V.att_stats=()=>{const m=S.attM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.sp
    <div class="row gap" style="margin-top:6px"><button class="icbtn" onclick="S.attM=attShift('${m}',-1);render(false)">${ic('back')}</button><b style="flex:1;text-align:center" data-notr>${m}</b><button class="icbtn" style="transform:scaleX(-1)" onclick="S.attM=attShift('${m}',1);render(false)">${ic('back')}</button></div>
    <div class="xs muted" style="margin-top:6px">${L(`上班时间 ${ws}:00，晚于 ${ws}:15 打卡算迟到`,`Work starts ${ws}:00; after ${ws}:15 counts as late`)}</div>
    <div class="box" style="padding:4px 16px">${data.map(d=>`<div class="li" onclick="S.attU=S.attU==='${d.u.id}'?null:'${d.u.id}';render(false)">${avatar(d.u.id,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(d.u.name))} <span class="xs muted">${esc(userTitle(d.u))}</span></div>
-     <div class="xs muted">${L('出勤','Days')} <b>${d.days}</b> · ${L('迟到','Late')} <b class="${d.late?'red':''}">${d.late}</b> · ${L('拜访','Visits')} <b>${d.visit}</b> · ${L('下班打卡','Clock-outs')} <b>${d.out}</b></div>${d.last?`<div class="xs muted one">${L('最近：','Latest: ')}${fdate(d.last.t)} · ${esc(d.last.addr||'')}</div>`:''}</div>${ic('chev',14)}</div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有外勤人员账号','No field staff accounts')}</div>`}</div>
+     <div class="xs muted">${L('出勤','Days')} <b>${d.days}</b> · ${L('迟到','Late')} <b class="${d.late?'red':''}">${d.late}</b> · ${L('拜访','Visits')} <b>${d.visit}</b> · ${L('下班打卡','Clock-outs')} <b>${d.out}</b></div>${d.last?`<div class="xs muted one">${L('最近：','Latest: ')}${fdate(d.last.t)} · ${esc(d.last.addr||'')}</div>`:''}</div>${ic('chev',14)}</div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有需要打卡的人员','No staff to show')}</div>`}</div>
    ${sel?`<div class="sec-h">${esc(userName(sel))} · ${L('打卡明细','Records')}</div>${attList(rs.filter(a=>a.by===sel).sort((a,b)=>b.t-a.t),false)}`:`<div class="sec-h">${L('本月全部打卡','All check-ins this month')}</div>${attList(rs.sort((a,b)=>b.t-a.t).slice(0,80),true)}`}</div>`};
 const attShift=(m,d)=>{const [y,mo]=m.split('-').map(Number);const x=new Date(y,mo-1+d,1);return x.getFullYear()+'-'+pad2(x.getMonth()+1)};
 function exportAtt(m){const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
@@ -531,9 +602,12 @@ function printHTML(kind,id){const co=(DB.get('settings','app')||{}).co||{};const
 function printDoc(kind,id){const h=printHTML(kind,id);const no=(h.match(/<title>(.*?)<\/title>/)||[])[1]||'doc';
   openSheet(`<div class="sh">${L('打印单据','Print document')}</div><div class="sm muted" data-notr>${esc(no)}</div>
    <iframe id="pvF" style="width:100%;height:52vh;border:1px solid var(--line);border-radius:12px;margin-top:10px;background:#fff"></iframe>
-   <div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1" onclick="downloadFile('${esc(no)}.html',window._pvH,'text/html;charset=utf-8')">${ic('download',18)} ${L('下载','Download')}</button><button class="bigbtn" style="flex:1" onclick="pvPrint()">${ic('print',18)} ${L('打印 / 存为 PDF','Print / save PDF')}</button></div>`);
+   <div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1" onclick="downloadFile('${esc(no)}.html',window._pvH,'text/html;charset=utf-8')">${ic('download',18)} ${L('下载','Download')}</button><button class="bigbtn" style="flex:1" onclick="pvPrint()">${ic('print',18)} ${L('打印 / 存为 PDF','Print / save PDF')}</button></div>
+   <div class="xs muted" style="margin-top:10px;line-height:1.6">${L('手机和打印机连同一个 WiFi，点“打印”后系统会自动搜索并列出网络打印机，选中即可打印（第一次选好后会记住）。','Keep the phone and printer on the same WiFi. Tap Print and the system finds network printers automatically; pick one (it is remembered).')} <a style="text-decoration:underline" onclick="go('printers')">${L('打印机设置','Printer setup')}</a></div>`);
   window._pvH=h;setTimeout(()=>{const f=$('#pvF');if(f)f.srcdoc=h},60)}
-function pvPrint(){const f=$('#pvF');try{if(f&&f.contentWindow&&f.contentWindow.print){f.contentWindow.focus();f.contentWindow.print();return}}catch(e){}
+function pvPrint(){const n=NX();if(n&&n.printHtml){n.printHtml({html:window._pvH,name:((window._pvH.match(/<title>(.*?)<\/title>/)||[])[1]||'document')}).catch(e=>toast(String(e&&e.message||e)));return}
+  if(isNative())return toast(L('旧版安装包不支持打印，请安装最新版','This app build cannot print — install the latest APK'));
+  const f=$('#pvF');try{if(f&&f.contentWindow&&f.contentWindow.print){f.contentWindow.focus();f.contentWindow.print();return}}catch(e){}
   const w=window.open('','_blank');if(w){w.document.write(window._pvH);w.document.close();setTimeout(()=>w.print(),400)}else downloadFile('document.html',window._pvH,'text/html;charset=utf-8')}
 
 /* ===== 工作台：本职位能用的全部功能（底部导航只放 5 个） ===== */
@@ -543,8 +617,8 @@ V.work=()=>{const t=[];const b=n=>n?`<span class="badge b-red" style="position:a
   T(can('stock'),'var(--green)','box',L('库存','Stock'),L('商品 · 分类 · 库存数量','Items · categories · quantities'),"tab('stock')");
   T(can('fin'),'var(--purple)','calc',L('财务','Finance'),L('应收 · 应付 · 资金日记账','Receivables · payables · cash book'),"tab('fin')",finTodo());
   T(true,'#C0532B','receipt',L('费用报销','Expenses'),L('办公费 · 外勤报销 · 杂费','Office · field claims · sundries'),"go('exp')",expTodo());
-  T(can('att'),'#0E7C86','pin',L('外勤打卡','Field check-in'),L('定位 · 水印照片','Location · watermarked photo'),"tab('att')");
-  T(can('att_view'),'#3D4A5C','clock',L('考勤统计','Attendance'),L('外勤出勤与打卡记录','Field attendance & records'),"go('att_stats')");
+  T(own('att'),'#0E7C86','pin',L('考勤打卡','Check-in'),L('定位 · 现场拍照 · 水印','Location · camera photo · watermark'),S.me.role==='field'?"tab('att')":"go('att')",attTodayDone()?0:'!');
+  T(can('att_view'),'#3D4A5C','clock',L('考勤统计','Attendance'),S.me.role==='sales'?L('销售部出勤与打卡记录','Sales team attendance'):L('全员出勤与打卡记录','Everyone\'s attendance & records'),"go('att_stats')");
   T(can('logi'),'var(--orange)','truck',L('物流跟踪','Logistics'),L('在途 · 签收 · 异常','In transit · delivered · issues'),"tab('logi')",DB.all('ships').filter(s=>s.status==='exception').length);
   T(can('logi'),'#2367B0','calc',L('运费计算器','Freight calculator'),L('运费 + 清关费 + 其他费用','Freight + clearance + other'),"go('logi_svc')");
   T(can('report'),'#7B4FA0','chart',L('报表','Reports'),L('销售 · 成本 · 运营费用','Sales · costs · operating expenses'),"go('report')");
@@ -896,7 +970,7 @@ function soFin(id){const d=DB.get('so',id);if(!own('so_fin')||d.status!=='submit
   openSheet(`<div class="sh">${d.pay==='credit'?L('赊账审核','Credit review'):L('确认收款','Confirm payment')}</div>${soHead(d)}
    ${d.pay==='credit'?`<div class="fld"><label>${L('审核意见','Comment')}</label><input class="inp" id="sfN" style="background:var(--card)" placeholder="${L('如：信用良好，30 天内回款','e.g. good history, pays within 30 days')}"></div>
     <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soFinOk('${id}')">${L('同意，交总经理审批','Approve → GM')}</button></div>`
-   :x.bal<=0.005?`<div class="note-g" style="margin-top:12px">${L(`已全额收款（${x.fs.length} 笔，出纳已登记），核对无误后放行出库。`,`Paid in full (${x.fs.length} receipt(s) recorded) — check and release.`)}</div>
+   :x.bal<=0.005?`<div class="note-g" style="margin-top:12px">${L(`已全额收款（${x.fs.length} 笔，出纳已登记），核对无误后放行出库。`,`Paid in full (${x.fs.length} receipt(s) recorded) — check and release.`)}</div>${x.got-x.tot>0.005?`<div class="note-r" style="margin-top:8px">${L(`多收了 ${money(x.got-x.tot)}，可能有重复登记的收款，请在“财务 → 收款”里核对。`,`Over-received by ${money(x.got-x.tot)} — a receipt may have been entered twice; check Finance → Receipts.`)}</div>`:''}
     <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soFinOk('${id}')">${ic('check',18)} ${L('核对无误，放行','Verified — release')}</button></div>`
    :`<div class="fld"><label>${L('实收金额','Amount received')} (${esc(baseIso())})</label><input class="inp" id="sfA" type="number" inputmode="decimal" style="background:var(--card)" value="${(+x.bal).toFixed(2)}"></div>
     <div class="chips wrap" style="margin-top:10px">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#sfR',true)">${pmName(k)}</span>`).join('')}</div>
@@ -1298,7 +1372,7 @@ V.me=()=>{const me=S.me;const pf=Alerts.prefs();const row=meRow;const P=plan();
     ${row('wh',L('门店与 VIP','Stores & VIP'),(P.vip?L(`VIP · ${P.limit} 个门店名额`,`VIP · ${P.limit} store slots`):L('1 个门店（新增门店需开通码）','1 store (new stores need an activation code)'))+L(` · 已用 ${Math.min(allWh().length,P.limit)}`,` · ${Math.min(allWh().length,P.limit)} in use`),"go('m_stores')")}
     ${row('gear',L('更多后台功能','More management'),L('商品资料、往来单位、系统设置、备份、日志','Products, partners, settings, backup, log'),"go('mgmt')")}</div>`:''}
    <div class="sec-h">${L('账号','Account')}</div><div class="box" style="margin-top:0;padding:4px 16px">
-    ${row('user',L('个人资料','Profile'),esc(nmP(me.name)),'profileSheet()')}${row('lock',L('修改我的密码','Change my password'),L('密码全公司唯一，用来识别你的账号','Passwords are unique and identify your account'),'pwdSheet()')}${row('wh',L('默认门店','Default store'),esc(whName(me.wh)),'whSheet()')}
+    ${row('user',L('个人资料','Profile'),esc(nmP(me.name)),'profileSheet()')}${row('lock',L('修改我的密码','Change my password'),L('初始密码 666666，可改成自己的','Starting password 666666 — change it to your own'),'pwdSheet()')}${row('wh',L('默认门店','Default store'),esc(whName(me.wh)),'whSheet()')}
     ${row('shield',L('自动登录（信任此设备）','Stay signed in on this device'),L('关闭后每次打开都需输入密码','Off: password needed every time'),'',sw(!!sess.trust,"const s=LS.get(SK,{});s.trust=!s.trust;LS.set(SK,s);render(false)"))}</div>
    <div class="sec-h">${L('国家 · 语言 · 货币','Country · language · currency')}</div><div class="box" style="margin-top:0;padding:4px 16px">
     ${row('pin',L('国家','Country'),`<span data-notr>${flagE(S.country)} ${esc(S.lang==='zh'?C().zh:C().en)}</span> · ${L('非洲 54 国可选','54 African countries')}`,'countrySheet()')}
@@ -1310,6 +1384,8 @@ V.me=()=>{const me=S.me;const pf=Alerts.prefs();const row=meRow;const P=plan();
    ${can('report')?`<div class="sec-h">${L('报表','Reports')}</div><div class="box" style="margin-top:0;padding:4px 16px">${row('chart',L('简易报表','Reports'),'',"go('report')")}</div>`:''}
    <div class="sec-h">${L('应用','App')}</div><div class="box" style="margin-top:0;padding:4px 16px">
     ${!isNative()&&!isStandalone()&&!WEB?row('home',L('安装到手机桌面','Install on home screen'),L('像应用一样从桌面打开','Open from your home screen like an app'),'pwaInstall()'):''}
+    ${row('print',L('打印机','Printers'),L('WiFi 网络打印机，自动搜索','WiFi network printers — auto discovery'),"go('printers')")}
+    ${row('shield',L('手机权限','Phone permissions'),L('定位 · 相机 · 麦克风','Location · camera · microphone'),'permSheet()')}
     ${!isNative()?row('download',L('下载安卓安装包','Download Android app'),L('支持应用内一键更新','APK with in-app updates'),'doApk()'):''}
     ${row('refresh',L('检查更新','Check for updates'),`<span data-notr>v${APP_VER} · build ${APP_BUILD}</span>`,'checkUpdate(true)',hasUpd()?'<span style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span>':null)}</div>
    <button class="bigbtn ghost" style="width:100%;margin-top:18px;color:var(--red)" onclick="doLogout()">${ic('logout',18)} ${L('退出登录','Sign out')}</button>
