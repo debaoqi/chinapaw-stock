@@ -3,3 +3,7 @@ android/
 admin-shell/
 *.keystore
 shots/
+
+google-services.json
+**/service-account*.json
+.env*
