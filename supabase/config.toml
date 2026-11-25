@@ -1,0 +1,2 @@
+[functions.jxc-push]
+verify_jwt = false
