@@ -1,6 +1,6 @@
 # 华宝进销存 · ChinaPaw Stock
 
-> 当前待发布版本：v1.8.0。请先阅读 `更新说明_v1.8.0_待发布.txt`。完整升级脚本是 `supabase/migrations/v1.8.0.sql`，不要先重新运行旧版角色约束脚本。
+> 当前已发布网页版本：v1.8.0；原生推送安装包 build 6。后台推送服务已配置，手机实际接收仍需安装新版后验收。完整升级脚本是 `supabase/migrations/v1.8.0.sql`，不要先重新运行旧版角色约束脚本。
 >
 > 董事长沿用原总经理账号；新增总经理是独立职位，实际人员后续设置。仅本地编译不能启用后台推送，必须完成 Firebase Android 配置、Supabase 函数与服务器密钥配置，再重打 APK。
 
@@ -47,7 +47,7 @@
 
 - Android 客户端包名 `com.chinapaw.stock`。将对应 Firebase Android 配置放到 `android/app/google-services.json`；文件不要提交到公开仓库。GitHub Actions 用 `FIREBASE_ANDROID_CONFIG` secret 注入，缺少时阻止后台推送版本发布。
 - Supabase Edge Function: `jxc-push`，环境密钥 `FCM_SERVICE_ACCOUNT`、`PUSH_WEBHOOK_SECRET`；服务账户只授予 Firebase Cloud Messaging 发送所需权限，私钥不能进入客户端或仓库。
-- `supabase/configure_push.sql` 是私有配置模板，填入随机共享密钥后在 SQL Editor 执行。它安装 pg_net、pg_cron，并创建提交触发和每分钟重试任务。
+- `supabase/configure_push.sql` 填入现有公开 anon JWT 后在 SQL Editor 执行；共享密钥由数据库生成，写入函数 Secrets。保留函数 JWT 验证，并由调度同时携带 JWT 和共享密钥。它安装 pg_net、pg_cron，并创建提交触发和每分钟重试任务。
 - FCM 只接收用户 ID、通知事件 ID 和通用提醒，不发送单据金额、人员打卡照片或群聊原文。
 - `node tests/sql_v180.mjs` 验证迁移、权限和路由；`node tests/push_relay_v180.mjs` 验证转发；`python tests/roles_att_badge_v180.py` 验证职位、拍照和未读。测试不会连接生产服务。
 - 真机验收需实际登录 APP，允许通知、发送由用户发起的测试群消息，并分别检查前台、后台、划掉 APP 和已读清除。
