@@ -85,3 +85,5 @@ function purgeRestrictedCache(){if(!DB.cloud||!S.me||S.me.role==='chair')return;
 
 const financeHold=()=>hdr(L('财务扩展待启用','Accounting extension pending'))+`<div class="pad"><div class="note-y">${L('需先核对历史成本和期初资金。本次更新保留原有收付款流程；总账与分账户模块暂未启用。','Reconcile historical costs and opening balances first. Existing payments remain available; ledger and money-account extensions are not yet enabled.')}</div></div>`;
 if(!RELEASE_FINANCE_ENABLED){V.money_accounts=financeHold;V.ledger=financeHold;V.opening_balances=financeHold}
+
+function confirmedRevenue(from,to=Infinity){return Math.round(DB.all('moves').filter(m=>m.t>=from&&m.t<to&&['so_out','so_ret'].includes(m.type)).reduce((a,m)=>{let amount=m.revenue;if(amount==null){const sale=m.type==='so_out'?DB.get('so',m.ref):DB.get('so',(DB.get('sr',m.ref)||{}).so),line=sale?.items?.find(i=>i.pid===m.pid);amount=line?Math.abs(+m.qty)*(+line.price||0):0}return a+(m.type==='so_out'?1:-1)*(+amount||0)},0)*100)/100}

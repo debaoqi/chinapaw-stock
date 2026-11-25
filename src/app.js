@@ -210,7 +210,7 @@ const bigCard=(bg,fg,icon,t,sub,fn)=>`<div class="sc" style="background:${bg};co
 const tile=(bg,icon,t,sub,fn)=>`<div class="wtile" style="background:${bg}" onclick="${fn}"><div class="wti">${ic(icon)}</div><div style="min-width:0"><div class="b">${t}</div><div class="wsub">${sub}</div></div></div>`;
 const statT=(cls,val,label,fn,cur)=>`<div class="stat ${cls}" onclick="${fn||''}"><div class="n" data-notr>${val}</div><div class="l">${label}</div></div>`;
 V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
-  const soT=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=today);const sales=soT.reduce((a,s)=>a+docTotal(s),0);
+  const sales=confirmedRevenue(today);
   const toShip=DB.all('so').filter(s=>s.status==='approved').length,toRecv=DB.all('po').filter(p=>p.status==='ordered').length;
   const low=DB.all('products').filter(p=>['low','out'].includes(stStatus(p))).length;
   const ships=DB.all('ships');const transit=ships.filter(s=>['picked','transit','customs'].includes(s.status)).length,deliv=ships.filter(s=>s.status==='delivering').length,exc=ships.filter(s=>s.status==='exception').length;
@@ -232,7 +232,7 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   if(r==='cashier'){tiles.push(tile('var(--blue)','doc',L('资金日记账','Cash book'),L('收付款流水 · 余额','Receipts, payments, balance'),"S.finSeg='book';tab('fin')"))}
   if(['chair','gm'].includes(r))tiles.push(tile('var(--blue)','chart',L('经营报表','Reports'),L('销售 · 利润 · 排行','Sales · profit · ranking'),"go('report')"));
   if(tiles.length%2)tiles.push(can('report')?tile('var(--purple)','chart',L('简易报表','Reports'),L('销售额 · 排行 · 流水','Sales · ranking · log'),"go('report')"):tile('var(--purple)','bell',L('消息','Messages'),L('提醒与待办','Alerts & tasks'),"go('msgs')"));
-  if(['chair','gm','sales'].includes(r))stats=statT('g',numK(sales),L('今日销售额','Sales today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
+  if(['chair','gm','sales'].includes(r))stats=statT('g',numK(sales),L('今日出库货值','Goods shipped today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='buyer')stats=statT('g',DB.all('po').filter(p=>p.status==='ordered').length,L('在途采购','Open POs'),"S.docSeg='po';S.docF='ordered';tab('docs')")+statT('',transit,L('物流在途','In transit'),"tab('logi')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='keeper')stats=statT('g',toRecv,L('待入库','To receive'),"go('recv_pick')")+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='acct')stats=statT('g',numK(F.arBal),L('应收余额','Receivable'),"S.finSeg='ar';tab('fin')",1)+statT('',numK(F.apBal),L('应付余额','Payable'),"S.finSeg='ap';tab('fin')")+statT(F.unverN?'y':'',F.unverN,L('待核对收款','To verify'),"S.finSeg='book';tab('fin')");
@@ -689,7 +689,7 @@ function deptBoard(F,x){const card=(role,lines,fn)=>`<div class="box dcard ${rol
   const mon=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const poM=DB.all('po').filter(p=>p.t>=mon&&p.status!=='draft'&&p.status!=='cancel').reduce((a,p)=>a+docTotal(p),0);
   return `<div class="sec-h"><span>${L('各部门进展','Department progress')} <span class="xs muted" style="font-weight:600">${L('金额单位','in')} <span data-notr>${esc(CUR())}</span></span></span><a onclick="go('report')">${L('报表','Reports')} ›</a></div><div class="dgrid">
    ${card('buyer',[[L('本月采购额','Purchases, month'),numK(poM)],[L('在途采购单','Open POs'),x.toRecv],[L('库存不足','Low stock'),x.low,x.low?'red':'']],"S.docSeg='po';S.docF='all';tab('docs')")}
-   ${card('sales',[[L('今日销售额','Sales today'),numK(x.sales)],[L('待出库','To ship'),x.toShip],[L('销售草稿','Drafts'),DB.all('so').filter(s=>s.status==='draft').length]],"S.docSeg='so';S.docF='all';tab('docs')")}
+   ${card('sales',[[L('今日出库货值','Goods shipped today'),numK(x.sales)],[L('待出库','To ship'),x.toShip],[L('销售草稿','Drafts'),DB.all('so').filter(s=>s.status==='draft').length]],"S.docSeg='so';S.docF='all';tab('docs')")}
    ${card('keeper',[[L('待入库 / 待出库','To receive / ship'),x.toRecv+' / '+x.toShip],[L('待审盘点','Counts to review'),x.tk,x.tk?'red':''],[L('物流异常','Exceptions'),x.exc,x.exc?'red':'']],"tab('stock')")}
    ${card('acct',[[L('应收余额','Receivable'),numK(F.arBal)],[L('应付余额','Payable'),numK(F.apBal)],[L('待核对收款','To verify'),F.unverN,F.unverN?'red':'']],"S.finSeg='ar';tab('fin')")}
    ${card('cashier',[[L('今日收款','Received today'),numK(F.rcvToday)],[L('待付款','To pay'),F.apprN,F.apprN?'red':''],[L('资金余额','Cash balance'),numK(F.cash)]],"S.finSeg='book';tab('fin')")}
@@ -1356,12 +1356,12 @@ function bookAdmin(id){const b=DB.get('svc',id);openSheet(`<div class="sh">${L('
 S.rpR='today';S.rpK='val';
 V.report=()=>{const from=S.rpR==='today'?dayStart():S.rpR==='week'?dayStart()-((new Date().getDay()+6)%7)*864e5:+new Date(new Date().getFullYear(),new Date().getMonth(),1);
   const r=S.me.role;const seeSales=['gm','ops','sales','acct'].includes(r),seeStock=can('stock'),seeProfit=can('profit'),seeBuy=['gm','ops','buyer','acct'].includes(r);
-  const so=DB.all('so').filter(s=>['shipped','done'].includes(s.status)&&(s.st||0)>=from);const sales=DB.all('moves').filter(m=>m.t>=from&&['so_out','so_ret'].includes(m.type)).reduce((a,m)=>a+(m.type==='so_out'?1:-1)*(+m.revenue||0),0);
+  const so=DB.all('so').filter(s=>['shipped','done'].includes(s.status)&&(s.st||0)>=from);const sales=confirmedRevenue(from);
   const mv=DB.all('moves').filter(m=>m.t>=from);const outN=new Set(mv.filter(m=>m.type==='so_out'||m.type==='po_ret').map(m=>m.ref)).size,inN=new Set(mv.filter(m=>m.type==='po_in'||m.type==='so_ret').map(m=>m.ref)).size;
   const cogs=mv.filter(m=>m.type==='so_out').reduce((a,m)=>a+(m.costAmount??(-m.qty)*(+m.uc||0)),0)-mv.filter(m=>m.type==='so_ret').reduce((a,m)=>a+(m.costAmount??m.qty*(+m.uc||0)),0);
   const freight=so.filter(s=>s.frt&&s.frt.payer==='us').reduce((a,s)=>a+(+s.frt.amt||0),0);const opex=DB.all('exp').filter(e=>['booked','paid'].includes(e.status)&&(e.bt||e.t)>=from).reduce((a,e)=>a+(+e.amt||0),0);
   const buys=DB.all('po').filter(p=>p.status!=='draft'&&p.status!=='cancel'&&p.t>=from).reduce((a,p)=>a+docTotal(p),0);
-  const days=[...Array(7)].map((_,i)=>{const d0=dayStart()-(6-i)*864e5;const v=DB.all('so').filter(s=>['shipped','done'].includes(s.status)&&(s.st||0)>=d0&&(s.st||0)<d0+864e5).reduce((a,s)=>a+docTotal(s),0);return {d0,v}});
+  const days=[...Array(7)].map((_,i)=>{const d0=dayStart()-(6-i)*864e5;const v=confirmedRevenue(d0,d0+864e5);return {d0,v}});
   const mx=Math.max(1,...days.map(d=>d.v));
   const rank=DB.all('products').map(p=>{const q=qtyOf(p.id);return {p,q,v:q*(can('cost')?avgCost(p.id):p.price)}}).sort((a,b)=>S.rpK==='val'?b.v-a.v:b.q-a.q).slice(0,20);const rmx=Math.max(1,...rank.map(x=>S.rpK==='val'?x.v:x.q));
   const last=DB.all('moves').sort((a,b)=>b.t-a.t).slice(0,10);
