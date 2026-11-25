@@ -1,6 +1,25 @@
 package com.chinapaw.stock;
 
 import android.Manifest;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.provider.MediaStore;
+import androidx.core.content.FileProvider;
+import android.media.MediaRecorder;
+import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
+import android.util.Base64;
+import androidx.activity.result.ActivityResult;
+import com.getcapacitor.annotation.ActivityCallback;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.Locale;
 import android.content.Context;
 import android.content.Intent;
 import android.location.Location;
@@ -46,10 +65,176 @@ import java.util.Map;
     permissions = {
         @Permission(alias = "location", strings = { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }),
         @Permission(alias = "camera", strings = { Manifest.permission.CAMERA }),
-        @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
+        @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }),
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
     }
 )
 public class JxcNativePlugin extends Plugin {
+
+    private MediaRecorder voiceRecorder;
+    private File voiceFile;
+    private long voiceStarted;
+    private TextToSpeech speech;
+    private boolean speechReady;
+    private PluginCall speechPending;
+
+    @PluginMethod
+    public void voiceCapabilities(PluginCall call) {
+        JSObject o = new JSObject(); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
+    }
+
+    @PluginMethod
+    public synchronized void startVoice(PluginCall call) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) { call.reject("请允许麦克风权限", "DENIED"); return; }
+        if (voiceRecorder != null) { call.reject("正在录音"); return; }
+        try {
+            voiceFile = File.createTempFile("jxc-voice-", ".m4a", getContext().getCacheDir());
+            voiceRecorder = new MediaRecorder();
+            voiceRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            voiceRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            voiceRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            voiceRecorder.setAudioSamplingRate(44100);
+            voiceRecorder.setAudioEncodingBitRate(64000);
+            voiceRecorder.setOutputFile(voiceFile.getAbsolutePath());
+            voiceRecorder.setMaxDuration(65000);
+            voiceRecorder.prepare(); voiceRecorder.start(); voiceStarted = System.currentTimeMillis(); call.resolve();
+        } catch (Exception e) { releaseVoice(); call.reject("录音失败: " + e.getMessage()); }
+    }
+
+    private synchronized void releaseVoice() {
+        if (voiceRecorder != null) { try { voiceRecorder.release(); } catch (Exception ignored) { } voiceRecorder = null; }
+        if (voiceFile != null) { voiceFile.delete(); voiceFile = null; }
+    }
+
+    @PluginMethod
+    public synchronized void stopVoice(PluginCall call) {
+        if (voiceRecorder == null) { call.reject("没有正在进行的录音"); return; }
+        try {
+            voiceRecorder.stop();
+            JSObject o = new JSObject(); o.put("duration", (System.currentTimeMillis() - voiceStarted) / 1000.0);
+            if (!call.getBoolean("cancel", false)) {
+                try (FileInputStream in = new FileInputStream(voiceFile); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[8192]; int count;
+                    while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+                    o.put("data", "data:audio/mp4;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP));
+                }
+            }
+            call.resolve(o);
+        } catch (Exception e) { if (call.getBoolean("cancel", false)) call.resolve(); else call.reject("录音未完成，请重试"); }
+        finally { releaseVoice(); }
+    }
+
+    @PluginMethod
+    public void recognizeSpeech(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, call.getString("lang", "zh-CN"));
+                i.putExtra(RecognizerIntent.EXTRA_PROMPT, "说话后确认文字 / Speak, then confirm the text");
+                startActivityForResult(call, i, "speechResult");
+            } catch (Exception e) { call.reject("手机未安装语音识别服务，请使用键盘语音输入", "UNAVAILABLE"); }
+        });
+    }
+
+    @ActivityCallback
+    private void speechResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject o = new JSObject();
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) { o.put("cancelled", true); call.resolve(o); return; }
+        ArrayList<String> texts = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        o.put("text", texts == null || texts.isEmpty() ? "" : texts.get(0)); call.resolve(o);
+    }
+
+    @PluginMethod
+    public void speak(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (speechReady && speech != null) { speakNow(call); return; }
+            if (speechPending != null) { call.reject("语音引擎正在启动，请稍后重试"); return; }
+            speechPending = call;
+            if (speech != null) speech.shutdown();
+            speech = new TextToSpeech(getContext(), status -> getActivity().runOnUiThread(() -> {
+                PluginCall pending = speechPending; speechPending = null;
+                speechReady = status == TextToSpeech.SUCCESS;
+                if (pending == null) return;
+                if (speechReady) speakNow(pending); else pending.reject("语音引擎不可用，请检查系统文字转语音设置");
+            }));
+        });
+    }
+
+    private void speakNow(PluginCall call) {
+        int language = speech.setLanguage(Locale.forLanguageTag(call.getString("lang", "zh-CN")));
+        if (language < 0) { call.reject("缺少此语言的语音包，请在系统文字转语音设置中下载"); return; }
+        if (speech.speak(call.getString("text", ""), TextToSpeech.QUEUE_FLUSH, null, "jxc-" + System.nanoTime()) == TextToSpeech.ERROR) call.reject("朗读失败");
+        else call.resolve();
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        releaseVoice();
+        clearCheckinPhoto();
+        if (speech != null) { speech.stop(); speech.shutdown(); speech = null; }
+        if (speechPending != null) { speechPending.reject("App 已关闭"); speechPending = null; }
+        super.handleOnDestroy();
+    }
+
+    private File checkinPhoto;
+
+    @PluginMethod
+    public void capturePhoto(PluginCall call) {
+        if (getPermissionState("camera") != PermissionState.GRANTED) { call.reject("请允许相机权限", "DENIED"); return; }
+        if (checkinPhoto != null) { call.reject("相机正在使用中"); return; }
+        getActivity().runOnUiThread(() -> {
+            try {
+                checkinPhoto = File.createTempFile("jxc-checkin-", ".jpg", getContext().getCacheDir());
+                Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", checkinPhoto);
+                Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivityForResult(call, intent, "checkinPhotoResult");
+            } catch (Exception e) { clearCheckinPhoto(); call.reject("无法打开系统相机: " + e.getMessage()); }
+        });
+    }
+
+    private void clearCheckinPhoto() { if (checkinPhoto != null) { checkinPhoto.delete(); checkinPhoto = null; } }
+
+    @ActivityCallback
+    private void checkinPhotoResult(PluginCall call, ActivityResult result) {
+        if (call == null) { clearCheckinPhoto(); return; }
+        try {
+            JSObject out = new JSObject();
+            if (result.getResultCode() != Activity.RESULT_OK || checkinPhoto == null || checkinPhoto.length() == 0) { out.put("cancelled", true); call.resolve(out); return; }
+            try (FileInputStream in = new FileInputStream(checkinPhoto); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192]; int count;
+                while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+                out.put("data", "data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP));
+            }
+            call.resolve(out);
+        } catch (Exception e) { call.reject("照片读取失败，请重新拍摄"); }
+        finally { clearCheckinPhoto(); }
+    }
+
+    @PluginMethod
+    public void registerPush(PluginCall call) {
+        try {
+            if (FirebaseApp.getApps(getContext()).isEmpty() && FirebaseApp.initializeApp(getContext()) == null) { call.reject("后台推送尚未启用，请联系管理员", "NOT_CONFIGURED"); return; }
+            FirebaseMessaging.getInstance().setAutoInitEnabled(true);
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) { call.reject("推送注册失败，请检查 Google Play 服务和网络"); return; }
+                JSObject o=new JSObject();o.put("token",task.getResult());call.resolve(o);
+            });
+        } catch(Exception e) { call.reject("后台推送配置不可用", "NOT_CONFIGURED"); }
+    }
+
+    @PluginMethod
+    public void setPushUser(PluginCall call) { JxcUnreadNotifications.setUser(getContext(),call.getString("userId",""));call.resolve(); }
+
+    @PluginMethod
+    public void setUnreadBadge(PluginCall call) {
+        int count=Math.max(0,call.getInt("count",0));
+        if(JxcUnreadNotifications.show(getContext(),count,call.getString("text",""),true))call.resolve();
+        else call.reject("请允许通知权限后显示未读角标","DENIED");
+    }
 
     private WebView printView;
 
@@ -58,6 +243,7 @@ public class JxcNativePlugin extends Plugin {
         o.put("location", getPermissionState("location").toString());
         o.put("camera", getPermissionState("camera").toString());
         o.put("microphone", getPermissionState("microphone").toString());
+        o.put("notifications", Build.VERSION.SDK_INT < 33 ? "granted" : getPermissionState("notifications").toString());
         return o;
     }
 
@@ -71,7 +257,7 @@ public class JxcNativePlugin extends Plugin {
         try {
             if (arr != null) for (Object x : arr.toList()) {
                 String k = String.valueOf(x);
-                if ((k.equals("location") || k.equals("camera") || k.equals("microphone")) && getPermissionState(k) != PermissionState.GRANTED) want.add(k);
+                if ((k.equals("location") || k.equals("camera") || (k.equals("microphone") || (k.equals("notifications") && Build.VERSION.SDK_INT >= 33))) && getPermissionState(k) != PermissionState.GRANTED) want.add(k);
             }
         } catch (Exception e) { /* ignore */ }
         if (want.isEmpty()) { call.resolve(permStates()); return; }
