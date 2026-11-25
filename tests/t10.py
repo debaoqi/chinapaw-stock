@@ -28,11 +28,11 @@ async def main():
         # website: single address, admin redirects
         w=await (await b.new_context(viewport={'width':1366,'height':820},locale='zh-CN')).new_page();w.on('pageerror',lambda e:errs.append('W '+str(e)))
         await w.goto('http://localhost:8765/admin/');await w.wait_for_timeout(1500);print('old /admin/ ->',w.url.split('/')[-1])
-        await fillpw(w,'111111');await w.click('button.bigbtn:has-text("登录")');await w.wait_for_timeout(800)
+        await fillpw(w,'666666');await w.click('button.bigbtn:has-text("登录")');await w.wait_for_timeout(800)
         print('web after login:',await w.evaluate("S.view"),'| sidebar has 后台管理:',await w.evaluate("document.querySelector('nav').innerText.includes('后台管理')"))
         await w.screenshot(path='shots/v3_web_mgmt.png')
         await w.evaluate("logout();S.view='login';render(true)");await w.wait_for_timeout(300);await w.screenshot(path='shots/v3_web_login.png')
         print('\n'.join(errs) or 'NO ERRORS');await b.close()
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id}}",pw);await pg.fill('#lgPw',pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;S.lgUid=(DB.all('users').find(u=>u.code===p)||{}).id||null}}",pw);await pg.fill('#lgPw',pw)
 asyncio.run(main())

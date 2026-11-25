@@ -1,7 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;S.lgUid=(DB.all('users').find(u=>u.code===p)||{}).id||null;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
 async def as_(pg,pw):
@@ -15,7 +15,7 @@ async def main():
         A=await ctx.new_page();A.on('pageerror',lambda e:errs.append(str(e)))
         await A.goto('http://localhost:8765/');await A.wait_for_timeout(1500)
         print('blank: products',await A.evaluate("DB.all('products').length"),'partners',await A.evaluate("DB.all('partners').length"),'users',await A.evaluate("DB.all('users').map(u=>u.code).join(',')"),'stores',await A.evaluate("allWh().map(w=>nm(w.n))"))
-        print('GM:',await as_(A,'111111'));print('setup checklist:',await A.evaluate("$('#screen').innerText.includes('开始使用')"),await A.evaluate("$$('#screen .box .li').length"))
+        print('GM:',await as_(A,'666666'));print('setup checklist:',await A.evaluate("$('#screen').innerText.includes('开始使用')"),await A.evaluate("$$('#screen .box .li').length"))
         # store name auto english
         await A.evaluate("go('m_stores');storeEdit('W1')");await A.wait_for_timeout(200);await A.fill("#sheet input >> nth=0","");await A.type("#sheet input >> nth=0","库玛西总店");await A.wait_for_timeout(900)
         print('auto english:',await A.evaluate("$('#ewEn').value"));await A.evaluate("storeSave()");await A.wait_for_timeout(300);print('store saved:',await A.evaluate("DB.get('wh','W1').n"))

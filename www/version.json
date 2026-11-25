@@ -1,6 +1,6 @@
 {
-  "version": "1.4.1",
-  "build": 12,
+  "version": "1.5.0",
+  "build": 13,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,6 +10,10 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "所有账号统一密码 666666（新账号也默认 666666），总经理可在“账号与密码”为某人重设或一键统一重设；同一职位多人时登录页选择本人姓名",
+      "私聊和群聊增加语音：按住说话、上滑取消，最长 60 秒；自动语音转文字并翻译成中 / 英文；点击播放",
+      "发送位置附带谷歌地图链接（点击打开、可复制）；定位被关闭时显示开启方法，也可手动输入地址发送；安卓安装包加入定位和麦克风权限；删除“关于”",
+      "输入框提示改为一行、字号缩小",
       "消息中英双语：每条消息都同时显示中文和英文（发送时翻译一次并保存，所有人看到同一份译文）；手机是其他语言的再多显示一行该语言",
       "修复底部导航文字比图标偏右的问题（文字被物流时间线的样式加了左边距），现在图标与文字严格居中对齐",
       "底部导航改为 5 个：首页 · 工作台 · 消息（中间）· 本职常用 · 我的；图标与文字居中对齐（兼容旧手机）",
@@ -22,6 +26,10 @@
       "打印：销售单、出库单（送货签收）、入库单（到岸成本）"
     ],
     "en": [
+      "All accounts use password 666666 (new ones too); the GM can reset one person or everyone; people in the same position pick their name at sign-in",
+      "Voice messages in chats: hold to talk, slide up to cancel, up to 60 s; speech-to-text with Chinese / English translation",
+      "Location messages include a Google Maps link; help when location is off, or type an address; Android app adds location & microphone permissions; removed “About”",
+      "Chat input hint on one line, smaller",
       "Bilingual chat: every message shows Chinese and English together (translated once when sent, the same for everyone), plus the reader’s own language if different",
       "Fixed bottom-bar labels sitting to the right of their icons",
       "Bottom bar: 5 tabs with Chat in the middle; icons centred on all phones",

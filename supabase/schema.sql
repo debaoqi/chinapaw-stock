@@ -155,14 +155,15 @@ do $$ declare r record; begin
   for r in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname='jxc_login' and n.nspname='public' loop
     execute 'drop function '||r.sig; end loop;
 end $$;
-create or replace function jxc_login(p_pw text, p_role text default null, p_device text default null) returns jsonb
+create or replace function jxc_login(p_pw text, p_role text default null, p_device text default null, p_uid text default null) returns jsonb
 language plpgsql security definer set search_path=public, extensions as $$
 declare v jxc_users; t text; f jxc_fail; dev text := left(coalesce(p_device,'?'),120);
 begin
   select * into f from jxc_fail where device=dev;
   -- 出错时返回 error（不抛异常），这样失败次数能保存下来，用于锁定
   if f.until is not null and f.until > now() then return jsonb_build_object('error','尝试次数过多，请 1 分钟后再试 / Too many attempts, try again in a minute'); end if;
-  select * into v from jxc_users where active and (p_role is null or role=p_role) and pw_hash = crypt(p_pw, pw_hash) limit 1;
+  -- 密码可以相同：同一职位有多人时，登录页让本人选择姓名（p_uid）
+  select * into v from jxc_users where active and (p_role is null or role=p_role) and (p_uid is null or id=p_uid) and pw_hash = crypt(p_pw, pw_hash) order by created_at limit 1;
   if v.id is null then
     insert into jxc_fail(device,n) values(dev,1) on conflict(device) do update set n=jxc_fail.n+1,
       until=case when jxc_fail.n+1>=5 then now()+interval '1 minute' else null end;
@@ -185,7 +186,6 @@ begin
   v := jxc_me_row(p_token);
   if v.pw_hash <> crypt(p_old,v.pw_hash) then raise exception '原密码不正确 / Current password is wrong'; end if;
   if length(p_new) < 6 then raise exception '新密码至少 6 位 / At least 6 characters'; end if;
-  if jxc_pw_taken(p_new, v.id) then raise exception '这个密码已被其他账号使用，请换一个 / This password is used by another account'; end if;
   update jxc_users set pw_hash=crypt(p_new,gen_salt('bf')) where id=v.id;
   delete from jxc_sessions where user_id=v.id and token<>p_token;
   insert into jxc_audit(user_id,action) values(v.id,'change_pw');
@@ -274,16 +274,14 @@ begin
   if v_id is null then
     if jxc_role_of(v_code) is null then raise exception '账号代码格式：部门代码或“部门代码-序号”，如 444444-1'; end if;
     if exists(select 1 from jxc_users where code=v_code) then raise exception '这个账号代码已存在 / Code already exists'; end if;
-    v_pw := coalesce(nullif(p_pw,''), v_code);
+    v_pw := coalesce(nullif(p_pw,''), '666666');
     if length(v_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
-    if jxc_pw_taken(v_pw, null) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
     insert into jxc_users(code,name,role,pos,wh,active,pw_hash,is_admin)
       values(v_code,p_user->>'name',v_role,nullif(p_user->>'pos',''),coalesce(p_user->>'wh','W1'),coalesce((p_user->>'active')::boolean,true),crypt(v_pw,gen_salt('bf')),
         a.role='gm' and v_role<>'gm' and coalesce((p_user->>'admin')::boolean,false));
   else
     if v_id=a.id and not coalesce((p_user->>'active')::boolean,true) then raise exception '不能停用自己的账号 / You cannot disable yourself'; end if;
     if p_pw is not null and length(p_pw) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
-    if p_pw is not null and jxc_pw_taken(p_pw, v_id) then raise exception '这个密码已被其他账号使用，请换一个 / Password already used'; end if;
     update jxc_users set name=coalesce(p_user->>'name',name), role=v_role, pos=case when v_id=a.id then pos else nullif(p_user->>'pos','') end, wh=coalesce(p_user->>'wh',wh), active=coalesce((p_user->>'active')::boolean,true),
       pw_hash=case when p_pw is null then pw_hash else crypt(p_pw,gen_salt('bf')) end,
       is_admin=case when v_role='gm' then false when a.role='gm' then coalesce((p_user->>'admin')::boolean,false) else is_admin end where id=v_id;
@@ -375,7 +373,7 @@ begin
   if exists(select 1 from jxc_users) then return '已有账号，未做改动 / Accounts already exist'; end if;
   for r in select * from (values ('111111','总经理','gm'),('222222','采购主管','buyer'),('333333','销售经理','sales'),
       ('444444','仓库主管','keeper'),('555555','会计','acct'),('666666','出纳','cashier'),('777777','外勤人员','field'),('888888','运营经理','ops')) v(code,name,role) loop
-    insert into jxc_users(code,name,role,pw_hash) values(r.code,r.name,r.role,crypt(r.code,gen_salt('bf')));
+    insert into jxc_users(code,name,role,pw_hash) values(r.code,r.name,r.role,crypt('666666',gen_salt('bf')));
   end loop;
   -- 公司设置与第 1 个门店（初始只有 1 个门店名额）
   insert into jxc_docs(k,id,d,u) values('settings','app',jsonb_build_object('id','app','base','GHS','plan',jsonb_build_object('limit',1),'u',(extract(epoch from now())*1000)::bigint),(extract(epoch from now())*1000)::bigint) on conflict do nothing;
@@ -394,12 +392,38 @@ create or replace function jxc_add_roles() returns int language plpgsql security
 declare n int;
 begin
   if not exists(select 1 from jxc_users) then return 0; end if;
-  insert into jxc_users(code,name,role,pw_hash) select v.code,v.name,v.role,crypt(v.code,gen_salt('bf')) from (values('777777','外勤人员','field'),('888888','运营经理','ops')) v(code,name,role)
-    where not exists(select 1 from jxc_users u where u.code=v.code) and not jxc_pw_taken(v.code,null);
+  insert into jxc_users(code,name,role,pw_hash) select v.code,v.name,v.role,crypt('666666',gen_salt('bf')) from (values('777777','外勤人员','field'),('888888','运营经理','ops')) v(code,name,role)
+    where not exists(select 1 from jxc_users u where u.code=v.code);
   get diagnostics n = row_count; return n;
 end $$;
 select jxc_add_roles();
 revoke execute on function jxc_add_roles() from public, anon, authenticated;
+-- 登录页：各职位的人员姓名（只有姓名和职位，不含密码等信息），同一职位多人时用来选择
+create or replace function jxc_staff() returns jsonb language sql stable security definer set search_path=public, extensions as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id',id,'name',name,'role',role,'pos',pos) order by created_at),'[]'::jsonb) from jxc_users where active $$;
+-- 总经理：把所有账号的密码统一重设
+create or replace function jxc_reset_all_pw(p_token text, p_pw text) returns jsonb language plpgsql security definer set search_path=public, extensions as $$
+declare a jxc_users;
+begin
+  a := jxc_me_row(p_token);
+  if a.role <> 'gm' then raise exception '只有总经理可以统一重设密码 / Only the GM can do this'; end if;
+  if length(coalesce(p_pw,'')) < 6 then raise exception '密码至少 6 位 / At least 6 characters'; end if;
+  update jxc_users set pw_hash=crypt(p_pw,gen_salt('bf'));
+  insert into jxc_audit(user_id,action) values(a.id,'reset_all_pw');
+  return jsonb_build_object('users',(select jsonb_agg(jxc_user_json(x) order by x.created_at) from jxc_users x));
+end $$;
+-- 一次性：按总经理要求，把现有所有账号密码设为 666666（只执行一次，以后重复运行脚本不会再改）
+create table if not exists jxc_flags(k text primary key, at timestamptz default now());
+alter table jxc_flags enable row level security;
+create or replace function jxc_once_pw() returns text language plpgsql security definer set search_path=public, extensions as $$
+begin
+  if exists(select 1 from jxc_flags where k='pw666666') then return '已执行过 / already done'; end if;
+  update jxc_users set pw_hash=crypt('666666',gen_salt('bf'));
+  insert into jxc_flags(k) values('pw666666');
+  return '所有账号密码已设为 666666 / all passwords set to 666666';
+end $$;
+select jxc_once_pw();
+revoke execute on function jxc_once_pw() from public, anon, authenticated;
 -- 这些只能在 SQL Editor 里执行，网页调用不了
 revoke execute on function jxc_bootstrap() from public, anon, authenticated;
 revoke execute on function jxc_set_platform_pw(text) from public, anon, authenticated;
@@ -411,9 +435,9 @@ do $$ begin
 end $$;
 
 -- 网页（anon）只能调用这些函数
-grant execute on function jxc_login(text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
+grant execute on function jxc_login(text,text,text,text), jxc_logout(text), jxc_change_pw(text,text,text), jxc_update_me(text,text,text),
   jxc_pull(text,bigint), jxc_push(text,jsonb), jxc_admin_user(text,jsonb,text), jxc_set_plan(text,text,jsonb),
-  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions(), jxc_head(text), jxc_reset(text,text) to anon, authenticated;
+  jxc_gen_codes(text,int), jxc_redeem_code(text,text), jxc_positions(), jxc_head(text), jxc_reset(text,text), jxc_staff(), jxc_reset_all_pw(text,text) to anon, authenticated;
 
 -- ---------- 图片存储：与华宝招聘相同（media/p/<sha1>，同一张图只存一份）。华宝项目里已有上传规则时，这条不会重复创建 ----------
 insert into storage.buckets(id,name,public) values('media','media',true) on conflict (id) do nothing;
@@ -421,6 +445,18 @@ do $$ begin
   if not exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and cmd='INSERT' and coalesce(with_check,'') like '%media%') then
     create policy "jxc media upload" on storage.objects for insert to anon, authenticated with check (bucket_id='media' and name like 'p/%');
   end if;
+end $$;
+
+-- ---------- 语音消息存储：进销存自己的语音空间 jxc-voice（只允许音频，单个不超过 1.5 MB）。不改动华宝招聘的图片空间 ----------
+do $$ begin
+  insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+    values('jxc-voice','jxc-voice',true,1500000,array['audio/webm','audio/ogg','audio/mp4','audio/mpeg','audio/aac','audio/x-m4a'])
+    on conflict (id) do update set public=true,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+  if not exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='jxc voice upload') then
+    create policy "jxc voice upload" on storage.objects for insert to anon, authenticated
+      with check (bucket_id='jxc-voice' and (storage.foldername(name))[1]='a' and lower(storage.extension(name)) in ('webm','ogg','m4a','mp3','aac'));
+  end if;
+exception when undefined_column or undefined_function then raise notice 'voice bucket skipped (local test db)';
 end $$;
 
 -- =====================================================================

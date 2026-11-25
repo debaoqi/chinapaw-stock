@@ -1,7 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 async def fillpw(pg,pw):
-    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
+    await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;S.lgUid=(DB.all('users').find(u=>u.code===p)||{}).id||null;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
 V=['work','chat','att_stats','exp','exp_stats','home','stock','docs','fin','logi','me','report','logi_svc','so_new','po_new','take','ship_new','recv_pick','msgs','m_users','m_stores','m_products','m_settings']

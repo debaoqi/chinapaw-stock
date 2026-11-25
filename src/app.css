@@ -124,7 +124,7 @@ textarea.inp{min-height:76px;resize:vertical}
 .qty{display:inline-flex;align-items:center;background:var(--soft);border-radius:20px;overflow:hidden;flex:none}
 .qty button{width:32px;height:32px;font-size:18px;font-weight:700}
 .qty input{width:52px;text-align:center;border:0;background:none;font-weight:800;font-size:15px;outline:none;padding:6px 0}
-.bigbtn{flex:1;background:var(--green);color:#fff;border-radius:40px;height:54px;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;padding:0 14px;min-width:0}
+.bigbtn{flex:1;background:var(--green);color:#fff;border-radius:40px;height:54px;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;padding:0 14px;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .bigbtn.dark{background:#161616}.bigbtn.ghost{background:var(--card);color:#161616}.bigbtn.red{background:var(--red)}.bigbtn.gold{background:var(--gold);color:#161616}
 .bigbtn:disabled{opacity:.45}
 .pill{display:inline-flex;align-items:center;gap:6px;border-radius:30px;padding:8px 14px;font-size:13px;font-weight:700;white-space:nowrap;background:#161616;color:#fff;flex:none}

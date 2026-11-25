@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.4.1',APP_BUILD=12;
+const APP_VER='1.5.0',APP_BUILD=13;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -17,6 +17,10 @@ const isNative=()=>!!(window.Capacitor&&window.Capacitor.isNativePlatform&&windo
 
 /* ---------- 图标 ---------- */
 const ICONS={
+ mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+ keyboard:'<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+ play:'<path d="M7 5v14l12-7z"/>',
+ pause:'<path d="M8 5v14M16 5v14"/>',
  chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>',
  send:'<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
  smile:'<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
@@ -340,13 +344,14 @@ function exportXlsx(file,sheets){const co=nmP(((DB.get('settings','app')||{}).co
   sheets.forEach(s=>{s.sub=s.sub||`${co} · ${L('导出时间','Exported')} ${fday(Date.now())} ${new Date().toTimeString().slice(0,5)} · ${L('货币','Currency')} ${dispIso()}${S.me?' · '+nmP(S.me.name):''}`});
   downloadBlob(file+'_'+fday(Date.now())+'.xlsx',xlsxBlob(sheets))}
 
-/* ---------- 账号：只用密码登录（不需要手机号）。密码在全公司唯一，系统据此识别是哪个部门的哪个账号 ---------- */
+/* ---------- 账号：选部门 → 职位 →（同一职位有多人时）选人员 → 输入密码。密码可以相同（默认 666666），总经理在后台修改 ---------- */
+const DEF_PW='666666';
 async function pwHash(id,pw){const b=new TextEncoder().encode('jxc|'+id+'|'+pw);const h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function findByPw(pw,exceptId){for(const u of DB.all('users')){if(u.id!==exceptId&&u.pw===await pwHash(u.id,pw))return u}return null}
-async function login(pw,trust,role){pw=String(pw||'').trim();const lk=LS.get('lock',{n:0,until:0});
+async function login(pw,trust,role,uidSel){pw=String(pw||'').trim();const lk=LS.get('lock',{n:0,until:0});
   if(lk.until>Date.now())throw new Error(L(`尝试次数过多，请 ${Math.ceil((lk.until-Date.now())/1000)} 秒后再试`,`Too many attempts. Try again in ${Math.ceil((lk.until-Date.now())/1000)}s`));
-  try{if(DB.cloud){const r=await rpc('jxc_login',{p_pw:pw,p_role:role||null,p_device:(LS.get('dev',null)||(LS.set('dev',uid('d')),LS.get('dev','')))+' '+navigator.userAgent.slice(0,90)});if(!r||!r.token)throw new Error(r&&r.error?r.error.split(' / ')[S.lang==='zh'?0:1]||r.error:'');S.token=r.token;S.me=r.user}
-    else{const u=await findByPw(pw);if(!u||u.active===false||(role&&u.role!==role))throw 0;S.me={...u};delete S.me.pw}}
+  try{if(DB.cloud){const r=await rpc('jxc_login',{p_pw:pw,p_role:role||null,p_uid:uidSel||null,p_device:(LS.get('dev',null)||(LS.set('dev',uid('d')),LS.get('dev','')))+' '+navigator.userAgent.slice(0,90)});if(!r||!r.token)throw new Error(r&&r.error?r.error.split(' / ')[S.lang==='zh'?0:1]||r.error:'');S.token=r.token;S.me=r.user}
+    else{let u=null;for(const x of DB.all('users')){if(x.active===false||(role&&x.role!==role)||(uidSel&&x.id!==uidSel))continue;if(x.pw===await pwHash(x.id,pw)){u=x;break}}if(!u)throw 0;S.me={...u};delete S.me.pw}}
   catch(e){lk.n++;if(lk.n>=5){lk.until=Date.now()+60e3;lk.n=0}LS.set('lock',lk);throw new Error(e&&e.message&&DB.cloud?e.message:L('职位或密码不正确，或账号已停用','Wrong position or password, or account disabled'))}
   LS.set('lock',{n:0,until:0});LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
 function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;if(Date.now()-s.t>30*864e5)return false;S.me=s.me;S.token=s.token;
@@ -354,7 +359,7 @@ function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;i
 function logout(){if(DB.cloud&&S.token)rpc('jxc_logout',{p_token:S.token}).catch(()=>{});LS.del(SK);S.me=null;S.token=null}
 async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:S.token,p_old:old,p_new:nw});return}
   const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
-  if(await findByPw(nw,u.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
+  if(String(nw).length<6)throw new Error(L('新密码至少 6 位','At least 6 characters'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
 /* 管理：新增 / 修改账号（总经理在后台操作） */
 async function saveAccount(a,newPw){if(!can('mgmt'))throw new Error(L('没有后台权限','No backend access'));
   const old=a.id?DB.get('users',a.id):null;
@@ -369,8 +374,8 @@ async function saveAccount(a,newPw){if(!can('mgmt'))throw new Error(L('没有后
   if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:nmP(a.name),role,pos:a.pos||null,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
   if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
   if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
-  const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?a.code:null);
-  if(pw){if(pw.length<6)throw new Error(L('密码至少 6 位','At least 6 characters'));if(await findByPw(pw,d.id))throw new Error(L('这个密码已被其他账号使用，请换一个','This password is used by another account — choose another'));d.pw=await pwHash(d.id,pw)}
+  const d={...a,role};if(!d.id)d.id=uid('U');const pw=newPw||(!a.id?DEF_PW:null);
+  if(pw){if(pw.length<6)throw new Error(L('密码至少 6 位','At least 6 characters'));d.pw=await pwHash(d.id,pw)}
   else d.pw=(old||{}).pw;DB.put('users',d)}
 /* 门店开通码：付款后由平台提供，每个码增加 1 个门店名额（只能用一次） */
 async function redeemCode(code){code=String(code||'').trim().toUpperCase().replace(/\s/g,'');if(!code)throw new Error(L('请输入开通码','Enter the activation code'));
@@ -550,7 +555,7 @@ try{window.Capacitor&&window.Capacitor.Plugins.App&&window.Capacitor.Plugins.App
 
 /* ---------- 弹层 / 提示 ---------- */
 let SHEET_FORCE=false;
-function openSheet(h,force){SHEET_FORCE=!!force;const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+h;s.scrollTop=0;s.classList.add('on');$('#mask').classList.add('on')}
+function openSheet(h,force){SHEET_FORCE=!!force;const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+h;s.scrollTop=0;s.classList.add('on');$('#mask').classList.add('on');/* 弹层里的按钮文字放不下时自动缩小 */if(window.fitText){requestAnimationFrame(fitText);setTimeout(fitText,320)}}
 function closeSheet(really){if(SHEET_FORCE&&really!==true)return;SHEET_FORCE=false;$('#sheet').classList.remove('on');$('#mask').classList.remove('on');if(window._scanStop)_scanStop()}
 const sheetOn=()=>$('#sheet').classList.contains('on');
 function toast(m,bad){const t=$('#toast');if(!t)return;if(bad==null)bad=/失败|不足|未找到|不在|请|超过|错误|无法|failed|not |enter |choose |add at|exceed|wrong|cannot/i.test(m);t.innerHTML=ic(bad?'alert':'check',16)+'<span>'+esc(m)+'</span>';t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200)}
@@ -574,7 +579,7 @@ async function seedBlank(){const d={};KINDS.forEach(k=>d[k]=[]);const cc=(typeof
   d.settings=[{id:'app',base:cc.iso||'GHS',country:S.country||'GH',co:{zh:'',en:''},rates:{sea:[...FR_DEF.sea],air:[...FR_DEF.air],road:[...FR_DEF.road],express:[...FR_DEF.express]},lowRule:'min',plan:{limit:1},cats:[]},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'总店',en:'Main store'},city:{zh:'',en:''}}];
   const U=[['U1','gm'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier'],['U8','field'],['U9','ops']];
-  for(const [id,r] of U){const code=ROLES[r].code;d.users.push({id,role:r,code,name:{zh:ROLES[r].zh,en:ROLES[r].en},wh:'W1',active:true,pw:await pwHash(id,code)})}
+  for(const [id,r] of U){const code=ROLES[r].code;d.users.push({id,role:r,code,name:{zh:ROLES[r].zh,en:ROLES[r].en},wh:'W1',active:true,pw:await pwHash(id,DEF_PW)})}
   KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save(true)}
 /* 清空业务数据（保留账号、门店、设置）。云端由服务器统一清空，其他手机同步 */
 async function resetData(){if(S.me.role!=='gm')throw new Error(L('只有总经理可以清空数据','Only the GM can clear data'));
