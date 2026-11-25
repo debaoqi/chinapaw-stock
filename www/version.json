@@ -3,19 +3,21 @@
   "build": 16,
   "date": "2026-11-25",
   "force": false,
-  "minNative": 5,
+  "minNative": 6,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "安装新版 APP 后支持后台消息提醒与未读图标（需允许通知）",
       "原总经理调整为董事长，新增独立总经理职位",
       "除董事长外全员拍照打卡，新增系统相机拍摄入口",
       "群聊和业务通知未读图标提示，阅读后自动清除",
       "保留 v1.7.0 的出库、赊销、采购入库和费用审批修复"
     ],
     "en": [
+      "Install the new Android app for background notifications and unread badges",
       "Chairman and separate general manager roles",
       "Photo check-in for all roles except chairman",
       "Unread chat and business-notification badge",
