@@ -37,6 +37,7 @@ jobs:
         run: |
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-feature android:name="android.hardware.location.gps" android:required="false" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />\n</manifest>#' $M
+          sed -i 's#</manifest>#    <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent><intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent></queries>\n</manifest>#' $M
           grep -n "permission" $M
       - name: In-app updater + native features (permissions, GPS, printing, printer discovery)
         run: |
@@ -51,6 +52,8 @@ jobs:
         run: |
           VER=$(node -p "require('./www/version.json').version")
           echo "VER=$VER" >> $GITHUB_ENV
+          NATIVE_BUILD=$(node -p "Math.max(Number(process.env.GITHUB_RUN_NUMBER),require('./www/version.json').minNative)")
+          echo "NATIVE_BUILD=$NATIVE_BUILD" >> $GITHUB_ENV
           sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"$VER\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
       - name: Fixed signing key (so new versions install over old ones)
@@ -70,7 +73,15 @@ jobs:
           s=s.replace('android {',cfg,1); open(p,'w').write(s)
           PY
       - run: npx cap sync android
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Prepare native push and check-in features
+        env:
+          JXC_NATIVE_BUILD: ${{ github.run_number }}
+          FIREBASE_ANDROID_CONFIG: ${{ secrets.FIREBASE_ANDROID_CONFIG }}
+        run: |
+          if [ -z "$FIREBASE_ANDROID_CONFIG" ]; then echo "Missing FIREBASE_ANDROID_CONFIG; background-push release is blocked."; exit 1; fi
+          printf '%s' "$FIREBASE_ANDROID_CONFIG" > android/app/google-services.json
+          python3 prepare_android.py
+      - run: cd android && chmod +x gradlew && ./gradlew :app:assembleDebug --no-daemon
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk ChinaPawStock.apk
       - name: Check signature
         run: $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --print-certs ChinaPawStock.apk | head -3
@@ -88,7 +99,7 @@ jobs:
             git config user.name "chinapaw-bot"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             mkdir -p www/app && cp ../ChinaPawStock.apk www/app/ChinaPawStock.apk
             SZ=$(stat -c%s www/app/ChinaPawStock.apk); SHA=$(sha256sum www/app/ChinaPawStock.apk | cut -d' ' -f1)
-            printf '{"build":%s,"version":"%s","size":%s,"sha256":"%s"}\n' "${{ github.run_number }}" "$VER" "$SZ" "$SHA" > www/app/apk.json
+            printf '{"build":%s,"version":"%s","size":%s,"sha256":"%s"}\n' "${NATIVE_BUILD}" "$VER" "$SZ" "$SHA" > www/app/apk.json
             git add www/app && git commit -q -m "APK build ${{ github.run_number }} mirror" && git push -q origin HEAD:main && break
             cd .. ; sleep 5
           done
