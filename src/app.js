@@ -2,9 +2,9 @@
 const V={};
 const WEB=document.body.classList.contains('web'),ADMIN=document.body.classList.contains('admin');const LOGO=window.LOGO_DATA||'logo.svg';
 /* 每个页面需要的权限：没有权限直接回首页，部门之间不能越界 */
-const NEED={printers:null,docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'po_recv',recv:'po_recv',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
+const NEED={grns:'_docs',grn_view:'_docs',printers:null,docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'_recv',recv:'po_prepare',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
   att:'att',att_stats:'att_view',exp_stats:'_exps',mgmt:'mgmt',m_users:'mgmt',m_stores:'mgmt',m_products:'mgmt',m_partners:'_pt',m_settings:'mgmt',m_backup:'mgmt',m_log:'mgmt'};
-const LIVE=new Set(['printers','chat','work','att','att_stats','exp','exp_stats','home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
+const LIVE=new Set(['printers','chat','work','att','att_stats','exp','exp_stats','home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','grn_view','grns','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
 const whName=id=>nm((DB.get('wh',id)||{}).n)||id||'';
 const ptName=id=>nmP((DB.get('partners',id)||{}).n)||'—';
 const P_=id=>DB.get('products',id)||{n:{zh:'已删除商品',en:'Deleted item'},unit:{zh:'',en:''}};
@@ -35,7 +35,7 @@ function render(top,soft){
   const isTab=TABS().some(t=>t[0]===S.view)&&!!S.me;sc.classList.toggle('nonav',!isTab);
   $('#navwrap').innerHTML=S.me&&(isTab||WEB)?tnav():'';document.body.classList.toggle('authed',!!S.me);
   if(top)sc.scrollTop=0;
-  syncUI();try{pwaBar()}catch(e){}fitText();requestAnimationFrame(fitText);
+  syncUI();updateUnreadBadge();try{pwaBar()}catch(e){}fitText();requestAnimationFrame(fitText);
 }
 /* 标题一律一行：放不下时先缩小字号（最多到 65%），仍放不下才用省略号（与 ChinaPaw v4.3.2 相同） */
 function fitText(){$$('#screen .hero,#screen .sc .t,#screen .stat .n,#screen .wtile .b,#screen .fit,#screen .ptitle,.bigbtn,.pill,.seg button,.rolebtn,.badge').forEach(e=>{if(!e.offsetParent)return;e.style.fontSize='';const cs=parseFloat(getComputedStyle(e).fontSize);let f=cs,i=0;
@@ -46,17 +46,31 @@ let _soft=0;
 function softRender(force){if(S.me&&S.view==='chat_room'){chatPaint();if(!force&&S.rv===DB.ver)return;S.rv=DB.ver;return}if(!S.me&&!(force&&S.view==='login'))return;if(!force&&S.rv===DB.ver)return;const a=document.activeElement;
   if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&$('#screen').contains(a))return;if(sheetOn()||!(LIVE.has(S.view)||S.view==='login'))return;
   clearTimeout(_soft);_soft=setTimeout(()=>{const t=$('#screen').scrollTop;render(false,true);$('#screen').scrollTop=t},120)}
+let BADGE_TIMER=0,BADGE_LAST='';
+function updateUnreadBadge(force=false){clearTimeout(BADGE_TIMER);BADGE_TIMER=setTimeout(async()=>{const user=S.me&&S.me.id,count=S.me?chatUnread()+Alerts.unread():0;const stamp=(user||'')+':'+count;if(!force&&stamp===BADGE_LAST)return;
+  if(navigator.setAppBadge){try{if(count)await navigator.setAppBadge(count);else await navigator.clearAppBadge()}catch(e){}}
+  if(isNative()&&NX()){const caps=await voiceCaps();if(caps.notifications){if((S.me&&S.me.id||'')!==(user||''))return;try{await NX().setUnreadBadge({count,text:L(`${count} 条未读消息 / 业务通知`,`${count} unread messages / business notices`)});BADGE_LAST=stamp}catch(e){/* Permission is managed in Me → Phone permissions. */}}}else BADGE_LAST=stamp;
+},80)}
+let PUSH_DEVICE_TOKEN='',PUSH_BINDING=false,PUSH_STATUS='idle';
+async function bindPushRegistration(manual=false){if(PUSH_BINDING||!S.me||!DB.cloud||!S.token||!isNative()||!NX())return;PUSH_BINDING=true;const user=S.me.id,session=S.token;
+  try{const caps=await voiceCaps();if(!caps.push){PUSH_STATUS='update';if(manual)toast(L('请安装新版 APP 以启用后台推送','Install the latest app for background push'));return}
+    const result=await NX().registerPush();if(!result.token)throw new Error('No FCM token');if(!S.me||S.me.id!==user||S.token!==session)return;
+    await rpc('jxc_register_push',{p_token:session,p_device_token:result.token});if(!S.me||S.me.id!==user||S.token!==session){await rpc('jxc_unregister_push',{p_token:session,p_device_token:result.token}).catch(()=>{});return}
+    PUSH_DEVICE_TOKEN=result.token;await NX().setPushUser({userId:user});PUSH_STATUS='ready';updateUnreadBadge(true);if(manual)toast(L('后台推送已连接，请允许系统通知','Background push connected; allow system notifications'),false);
+  }catch(e){PUSH_STATUS='setup';if(manual)toast(L('后台推送未就绪：','Background push not ready: ')+String(e.message||e))}finally{PUSH_BINDING=false}}
+async function revokePushRegistration(session){const token=PUSH_DEVICE_TOKEN;PUSH_DEVICE_TOKEN='';PUSH_STATUS='idle';try{const caps=await voiceCaps();if(caps.push)await NX().setPushUser({userId:''})}catch(e){}if(session&&token)await rpc('jxc_unregister_push',{p_token:session,p_device_token:token}).catch(()=>{})}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.me){bindPushRegistration();updateUnreadBadge(true)}});
 function todoCount(){let n=0;
   if(can('so_ship'))n+=DB.all('so').filter(s=>s.status==='approved').length;
   if(own('so_fin'))n+=DB.all('so').filter(s=>s.status==='submitted').length;
   if(S.me&&S.me.role==='gm')n+=DB.all('so').filter(s=>s.status==='credit_gm').length;
   if(own('tk_fin'))n+=DB.all('counts').filter(c=>c.status==='pending').length;if(can('tk_final'))n+=DB.all('counts').filter(c=>c.status==='fin_ok').length;
-  if(can('po_recv'))n+=DB.all('po').filter(p=>p.status==='ordered').length;
+  n+=DB.all('grn').filter(g=>grnCanAct(g)).length;
 
   if(can('pr_exec'))n+=DB.all('pr').filter(r=>r.status==='pending').length;if(can('sr_exec'))n+=DB.all('sr').filter(r=>r.status==='pending').length;return n}
 /* 底部导航：按部门显示各自的功能（网页版显示在左侧） */
 /* 底部导航：每个职位最多 5 个，“消息”固定在中间；其余功能都在“工作台” */
-function TABS(){if(!S.me)return [];const r=S.me.role;const P={gm:['fin','calc',L('财务','Finance')],ops:['report','chart',L('报表','Reports')],buyer:['stock','box',L('库存','Stock')],sales:['docs','doc',L('单据','Orders')],
+function TABS(){if(!S.me)return [];const r=S.me.role;const P={chair:['report','chart',L('报表','Reports')],gm:['fin','calc',L('财务','Finance')],ops:['report','chart',L('报表','Reports')],buyer:['stock','box',L('库存','Stock')],sales:['docs','doc',L('单据','Orders')],
    field:['att','pin',L('打卡','Check-in')],keeper:['stock','box',L('库存','Stock')],acct:['fin','calc',L('财务','Finance')],cashier:['fin','calc',L('财务','Finance')]}[r]||['docs','doc',L('单据','Orders')];
   return [['home','home',L('首页','Home')],['work','grid',L('工作台','Work')],['chat','chat',L('消息','Chat')],P,['me','user',L('我的','Me')]]}
 function tnav(){const v=S.view;const b=n=>n?`<span class="cnt">${n>99?'99+':n}</span>`:'';
@@ -85,15 +99,17 @@ const prL=(p,l)=>p&&typeof p.n==='object'?(p.n[l]||p.n.zh||p.n.en):((p&&p.n)||''
 const unL=(p,l)=>p&&typeof p.unit==='object'?(p.unit[l]||''):((p&&p.unit)||'');
 const Alerts={
   key(){return 'notes_'+(S.me?S.me.id:'x')},
-  list(){return LS.get(this.key(),[])},save(a){LS.set(this.key(),a.slice(0,80))},
+  list(){return LS.get(this.key(),[])},save(a){LS.set(this.key(),a.slice(0,80));updateUnreadBadge()},
   unread(){return S.me?this.list().filter(n=>!n.read).length:0},
   prefs(){return Object.assign({order:true,low:true,ship:true,logi:true,fin:true},LS.get('prefs_'+(S.me&&S.me.id),{}))},
   add(n,show,t){const a=this.list();if(n.key&&a.some(x=>x.key===n.key))return;n.id=uid('n');n.t=n.t||Date.now();a.unshift(n);this.save(a);if(show)banner(n)},
   scan(rows,show=true){if(!S.me)return;const pf=this.prefs();
-    rows.forEach(({k,d})=>{if(d.by===S.me.id)return;
+    rows.forEach(({k,d})=>{const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};if(d.by===S.me.id&&!(k==='grn'&&grnCanAct(d))&&!(k==='exp'&&expAct(d))&&!(k==='fin'&&payCanReview(d))&&!(k==='so'&&(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&S.me.role==='gm'||d.status==='approved'&&can('so_ship'))))return;
       if(k==='att'&&can('att_view')&&d.by!==S.me.id)self.add({key:'at'+d.id,ic:'pin',c:'var(--gold)',zh:`${userName(d.by)} ${ATT_T[d.type][0]} · ${d.addr||''}`,en:`${userName(d.by)} ${ATT_T[d.type][1]} · ${d.addr||''}`,go:['att_stats',{}]},show&&d.type!=='visit');
       if(k==='msg'){if(show&&!d.rc&&(!d.mem||d.mem.includes(S.me.id))&&!(S.view==='chat_room'&&S.chId===d.ch)&&Date.now()-d.t<60e3){const c=chGet(d.ch);const at=(d.at||[]).includes(S.me.id)||(d.at||[]).includes('all');
-        const txt=(c&&c.type!=='dm'?chName(c)+' · ':'')+userName(d.by)+'：'+(d.voice?L('[语音]','[Voice]')+(d.text?' '+d.text:''):d.img?L('[图片]','[Photo]'):d.loc?L('[位置]','[Location]'):d.text);banner({ic:'chat',c:at?'var(--red)':'var(--green)',zh:(at?'[有人@你] ':'')+txt,en:(at?'[Mentioned] ':'')+txt,go:['chat_room',{ch:d.ch}]})}return}const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};
+        const txt=(c&&c.type!=='dm'?chName(c)+' · ':'')+userName(d.by)+'：'+(d.voice?L('[语音]','[Voice]')+(d.text?' '+d.text:''):d.img?L('[图片]','[Photo]'):d.loc?L('[位置]','[Location]'):d.text);banner({ic:'chat',c:at?'var(--red)':'var(--green)',zh:(at?'[有人@你] ':'')+txt,en:(at?'[Mentioned] ':'')+txt,go:['chat_room',{ch:d.ch}]})}return};
+      if(k==='exp'&&expAct(d))self.add({key:'ex'+d.id+d.status,ic:'calc',c:'var(--purple)',zh:`费用 ${money(d.amt)} 待您处理`,en:`Expense ${money(d.amt)} needs action`,go:['exp',{}]},show);
+      if(k==='grn'&&grnCanAct(d))self.add({key:'gr'+d.id+d.status,ic:'in',c:'var(--purple)',zh:`入库单 ${d.no} 待您处理 · 批号 ${d.batch||d.no}`,en:`Receipt ${d.no} needs your review`,go:['grn_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='submitted'&&own('so_fin'))self.add({key:'so'+d.id+'f'+(d.u||''),ic:'calc',c:'var(--purple)',zh:`销售单 ${d.no} 待财务审核（${d.pay==='credit'?'赊账':'现款'}）· ${pnL(d.cus,'zh')}`,en:`Order ${d.no} needs finance review (${d.pay==='credit'?'credit':'cash'})`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='credit_gm'&&S.me.role==='gm')self.add({key:'so'+d.id+'g',ic:'calc',c:'var(--red)',zh:`赊账销售单 ${d.no} 待您审批 · ${pnL(d.cus,'zh')}`,en:`Credit order ${d.no} needs your approval`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='rejected'&&d.by===S.me.id)self.add({key:'so'+d.id+'r'+(d.u||''),ic:'x',c:'var(--red)',zh:`销售单 ${d.no} 被驳回：${d.rj||''}`,en:`Order ${d.no} rejected: ${d.rj||''}`,go:['so_view',{id:d.id}]},show);
@@ -101,7 +117,7 @@ const Alerts={
       if(k==='so'&&d.status==='approved'&&d.by===S.me.id&&pf.order)self.add({key:'so'+d.id+'ok',ic:'check',c:'var(--green)',zh:`销售单 ${d.no} 已审核通过，仓库将出库`,en:`Order ${d.no} approved — the warehouse will ship`,go:['so_view',{id:d.id}]},show);
       if(false)self.add({key:'so'+d.id+'n',ic:'cart',c:'var(--gold)',zh:`同事提交了销售单 ${d.no}`,en:`Sales order ${d.no} submitted`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='shipped'&&can('so')&&pf.ship)self.add({key:'so'+d.id+'x',ic:'out',c:'var(--blue)',zh:`销售单 ${d.no} 已出库发货`,en:`Order ${d.no} has shipped`,go:['so_view',{id:d.id}]},show);
-      if(k==='po'&&d.status==='ordered'&&can('po_recv')&&pf.ship)self.add({key:'po'+d.id+'o',ic:'in',c:'var(--green)',zh:`采购单 ${d.no} 已下单，到货后请入库`,en:`PO ${d.no} ordered — receive on arrival`,go:['po_view',{id:d.id}]},show);
+      if(k==='po'&&d.status==='ordered'&&can('po_prepare')&&pf.ship)self.add({key:'po'+d.id+'o',ic:'in',c:'var(--green)',zh:`采购单 ${d.no} 已下单，到货后请入库`,en:`PO ${d.no} ordered — receive on arrival`,go:['po_view',{id:d.id}]},show);
       if(k==='counts'&&d.status==='fin_ok'&&can('tk_final'))self.add({key:'tk'+d.id+'f',ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} 财务已复核，待终审`,en:`Stock count ${d.no} awaiting final approval`,go:['take_view',{id:d.id}]},show);
       if(k==='counts'&&d.status==='pending'&&own('tk_fin'))self.add({key:'tk'+d.id,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} 待审核`,en:`Stock count ${d.no} awaiting review`,go:['take_view',{id:d.id}]},show);
       if(k==='counts'&&['approved','rejected'].includes(d.status)&&d.by===S.me.id)self.add({key:'tk'+d.id+d.status,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} ${d.status==='approved'?'已审核通过':'被驳回'}`,en:`Stock count ${d.no} ${d.status}`,go:['take_view',{id:d.id}]},show);
@@ -110,7 +126,7 @@ const Alerts={
       if(k==='sr'&&d.status==='pending'&&can('sr_exec'))self.add({key:'sr'+d.id,ic:'in',c:'var(--purple)',zh:`销售退货 ${d.no} 待收货`,en:`Customer return ${d.no} to receive`,go:['docs',{}]},show);
       if(k==='fin'&&d.type==='rcv'&&d.status==='recorded'&&can('fin_verify')&&S.me.role!=='gm'&&pf.fin)self.add({key:'fr'+d.id,ic:'check',c:'var(--purple)',zh:`出纳登记了一笔收款，待核对`,en:`A receipt was recorded — please verify`,go:['fin',{}]},show);
       if(k==='fin'&&d.type==='pay'&&d.status==='approved'&&can('fin_pay')&&S.me.role!=='gm'&&pf.fin)self.add({key:'fp'+d.id+(d.gt||''),ic:'out',c:'var(--orange)',zh:`总经理已批准一笔付款，待支付`,en:`The GM approved a payment — please pay`,go:['fin',{}]},show);
-      if(k==='fin'&&d.type==='pay'&&d.status==='req'&&S.me.role==='gm')self.add({key:'fq'+d.id+(d.at||''),ic:'calc',c:'var(--gold)',zh:`会计提交了付款申请，待您审批`,en:`The accountant requested a payment — please review`,go:['fin',{seg:'ap'}]},show);
+      if(k==='fin'&&payCanReview(d))self.add({key:'fq'+d.id+(d.at||''),ic:'calc',c:'var(--gold)',zh:`付款申请待您审批（每笔先运营经理，超过 2000 再总经理）`,en:`The accountant requested a payment — please review`,go:['fin',{seg:'ap'}]},show);
       if(k==='fin'&&d.type==='pay'&&['approved','rejected'].includes(d.status)&&S.me.role==='acct'&&d.gby)self.add({key:'fg'+d.id+(d.gt||''),ic:d.status==='approved'?'check':'x',c:d.status==='approved'?'var(--green)':'var(--red)',zh:d.status==='approved'?`总经理批准了付款申请`:`总经理驳回了付款申请`,en:d.status==='approved'?`The GM approved a payment request`:`The GM rejected a payment request`,go:['fin',{seg:'ap'}]},show);
       if(k==='svc'&&d.status==='new'&&S.me.role==='gm')self.add({key:'bk'+d.id,ic:'calendar',c:'var(--orange)',zh:`新的物流预约 ${d.no}`,en:`New logistics booking ${d.no}`,go:['logi_svc',{}]},show);
     });
@@ -125,7 +141,7 @@ function banner(n){const b=$('#banner');if(!b)return;b.innerHTML=`<div class="qi
 function markRead(id){const a=Alerts.list();a.forEach(n=>{if(!id||n.id===id)n.read=true});Alerts.save(a)}
 
 /* ================= 登录：只输入密码（不需要手机号），系统按密码识别部门与账号 ================= */
-const ROLE_COLOR={gm:'#161616',ops:'#3D4A5C',buyer:'#2367B0',sales:'#F2B705',field:'#C98E00',keeper:'#0B7A4B',acct:'#7B4FA0',cashier:'#E87A2B'};
+const ROLE_COLOR={chair:'#161616',gm:'#161616',ops:'#3D4A5C',buyer:'#2367B0',sales:'#F2B705',field:'#C98E00',keeper:'#0B7A4B',acct:'#7B4FA0',cashier:'#E87A2B'};
 /* 登录：① 部门 → ② 职位（本部门的基本职位 + 后台新增的职位）→ ③ 密码 */
 const lgTitle=()=>{const p=S.lgPos&&posById(S.lgPos);return p?nm(p.n):roleName(S.lgRole)};
 const lgOpts=d=>[...d.roles.map(r=>({r,p:null,n:roleName(r)})),...positions().filter(p=>!p.del&&p.dept===d.id&&d.roles.includes(p.role)).map(p=>({r:p.role,p:p.id,n:nm(p.n)}))];
@@ -152,7 +168,7 @@ V.login=()=>{if(S.lgRole===undefined){S.lgRole=LS.get('lgRole',null);S.lgPos=LS.
   </div>`};
 async function doLogin(){const pw=$('#lgPw').value;const e=$('#lgErr');const ppl=lgPeople();if(ppl.length>1&&!ppl.some(u=>u.id===S.lgUid)){e.textContent=L('请选择人员','Choose your name');return}if(!S.lgDept){e.textContent=L('请先选择部门','Choose your department first');return}if(!S.lgRole){e.textContent=L('请选择职位','Choose your position');return}if(!pw){e.textContent=L('请输入密码','Enter your password');return}
   e.textContent='';try{await login(pw,LS.get('trust',true),S.lgRole,ppl.length>1?S.lgUid:(ppl[0]||{}).id||null);afterLogin()}catch(x){e.textContent=x.message;$('#lgPw').select()}}
-function afterLogin(){setTimeout(()=>permAsk(false),1500);
+function afterLogin(){setTimeout(()=>{permAsk(false);bindPushRegistration()},1500);
   S.hist=[];S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first();Alerts.low(false);render(true);Sync.run('boot');toast(L('欢迎，','Welcome, ')+nmP(S.me.name)+' · '+userTitle(S.me),false)}
 function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?')}</div><div class="sm muted" style="margin-top:6px">${DB.outbox.length?L(`还有 ${DB.outbox.length} 条记录未提交，下次登录后继续提交。`,`${DB.outbox.length} change(s) not yet submitted; they will be sent next time you sign in.`):L('退出后需要重新输入密码登录。','You will need your password to sign in again.')}</div>
   <div class="row gap" style="margin-top:18px"><button class="bigbtn ghost" onclick="closeSheet()">${L('取消','Cancel')}</button><button class="bigbtn red" onclick="closeSheet();logout();S.view='login';render(true)">${L('退出','Sign out')}</button></div>`)}
@@ -162,12 +178,13 @@ function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?'
 function NX(){try{const P=window.Capacitor&&window.Capacitor.Plugins;return P&&P.JxcNative||null}catch(e){return null}}
 /* 申请权限：App 里弹系统的“允许”对话框（只问一次，以后不再问）；网页里由浏览器在第一次使用时询问 */
 async function nativePerms(list){const n=NX();if(!n)return {};const st=await n.checkPerms();const need=list.filter(k=>st[k]!=='granted');if(!need.length)return st;return await n.requestPerms({list:need})}
-async function permAsk(force){const n=NX();if(!n||!S.me)return;const k='permAsked';if(!force&&LS.get(k,0))return;LS.set(k,1);
-  try{const st=await n.checkPerms();const need=['location','camera','microphone'].filter(x=>st[x]!=='granted');if(!need.length)return;
+async function permAsk(force){const n=NX();if(!n||!S.me)return;const k='permAsked_v180';if(!force&&LS.get(k,0))return;LS.set(k,1);
+  try{const st=await n.checkPerms();const need=['location','camera','microphone','notifications'].filter(x=>st[x]!=='granted');if(!need.length)return;
     openSheet(`<div class="sh">${L('允许 3 个手机权限','Allow 3 phone permissions')}</div><div class="sm" style="margin-top:8px;line-height:1.8">${L('接下来手机会依次弹出窗口，请都点“允许 / 仅在使用中允许”：<br>· <b>位置信息</b>：考勤打卡、发送位置<br>· <b>相机</b>：打卡拍现场照片、拍商品图<br>· <b>麦克风</b>：发语音消息<br>只需要允许这一次，以后使用时不会再问。','Your phone will now ask three times — tap “Allow / While using the app” each time:<br>· <b>Location</b>: check-in, share location<br>· <b>Camera</b>: check-in photo, product photos<br>· <b>Microphone</b>: voice messages<br>You only need to do this once.')}</div>
-     <button class="bigbtn" style="width:100%;margin-top:14px" onclick="closeSheet(true);nativePerms(['location','camera','microphone']).then(()=>toast(L('已设置好','All set'),false)).catch(()=>{})">${ic('check',18)} ${L('好的，开始','OK, go')}</button>`)}catch(e){}}
+     <button class="bigbtn" style="width:100%;margin-top:14px" onclick="closeSheet(true);nativePerms(['location','camera','microphone','notifications']).then(()=>updateUnreadBadge(true)).then(()=>toast(L('已设置好','All set'),false)).catch(()=>{})">${ic('check',18)} ${L('好的，开始','OK, go')}</button>`)}catch(e){}}
+function pushSettings(){openSheet(`<div class="sh">${L('未读提醒与后台推送','Unread alerts & background push')}</div><div class="note-g">${L('群消息、语音和业务提交会显示未读提示；读完后清除。','Chat, voice and business submissions show an unread badge; reading clears it.')}</div><div class="sm" style="margin-top:12px">${PUSH_STATUS==='ready'?L('后台推送已连接','Background push connected'):L('后台推送尚未启用，请联系管理员完成配置。','Background push is not enabled. Ask your administrator to finish setup.')}</div><button class="bigbtn" style="margin-top:12px" onclick="nativePerms(['notifications']).then(()=>bindPushRegistration(true))">${L('开启通知并连接推送','Allow notifications & connect push')}</button><div class="xs muted" style="margin-top:12px">${L('图标显示红点或数字取决于手机桌面；系统强行停止 App 后需重新打开。','Your launcher controls dots/numbers; reopen the app after a system force-stop.')}</div>`)}
 function permSheet(){const n=NX();if(!n){openSheet(`<div class="sh">${L('手机权限','Phone permissions')}</div><div class="sm" style="margin-top:8px;line-height:1.8">${isNative()?L('您的安装包是旧版，请安装最新版：新版打开后会自动申请定位、相机、麦克风权限。','This is an old app build — install the latest APK; it asks for location, camera and microphone automatically.')+`<button class="bigbtn" style="width:100%;margin-top:12px" onclick="closeSheet(true);checkUpdate(true)">${ic('refresh',18)} ${L('检查更新','Check for updates')}</button>`:L('网页版在第一次用到时由浏览器询问，点“允许”即可。<br>如果之前点了“拒绝”：Chrome 点地址栏左边的图标 → 权限，把位置、相机、麦克风改成“允许”，再刷新页面。<br>微信里打开的网页不支持定位和录音，请点“…”选“在浏览器打开”。','The browser asks the first time each feature is used — tap Allow.<br>If you tapped Block before: tap the icon left of the address → Permissions → allow Location, Camera and Microphone, then reload.<br>Pages opened inside WeChat cannot use location or recording — open them in Chrome.')}</div>`);return}
-  n.checkPerms().then(st=>{const lab={location:[L('位置信息','Location'),L('考勤打卡、发送位置','Check-in, share location')],camera:[L('相机','Camera'),L('打卡拍照、商品图片','Check-in photos, product photos')],microphone:[L('麦克风','Microphone'),L('语音消息','Voice messages')]};
+  n.checkPerms().then(st=>{const lab={location:[L('位置信息','Location'),L('考勤打卡、发送位置','Check-in, share location')],camera:[L('相机','Camera'),L('打卡拍照、商品图片','Check-in photos, product photos')],notifications:[L('通知与图标未读提示','Notifications & badge'),L('群消息、语音与业务提交提醒','Group chat, voice and submission alerts')],microphone:[L('麦克风','Microphone'),L('语音消息','Voice messages')]};
     openSheet(`<div class="sh">${L('手机权限','Phone permissions')}</div><div class="box" style="padding:4px 16px;margin-top:10px">${Object.keys(lab).map(k=>`<div class="li"><div style="flex:1;min-width:0"><div class="b sm">${lab[k][0]}</div><div class="xs muted">${lab[k][1]}</div></div>${st[k]==='granted'?`<span class="badge b-green">${L('已允许','Allowed')}</span>`:`<button class="pill g" onclick="nativePerms(['${k}']).then(r=>{if(r&&r['${k}']!=='granted')NX().openAppSettings();permSheet()})">${L('允许','Allow')}</button>`}</div>`).join('')}</div>
      <div class="xs muted" style="margin-top:10px;line-height:1.6">${L('如果点“允许”没有弹窗（之前选过“不再询问”），会直接打开本 App 的权限页面，把对应项改成“允许”即可。','If no prompt appears (you chose “Don’t ask again” before), the app’s permission page opens — switch the item to Allow.')}</div>
      <div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openAppSettings()">${L('权限页面','Permission page')}</button><button class="bigbtn ghost" style="flex:1;height:48px" onclick="NX().openLocationSettings()">${L('GPS 开关','GPS switch')}</button></div>`)}).catch(()=>{})}
@@ -198,7 +215,7 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   const low=DB.all('products').filter(p=>['low','out'].includes(stStatus(p))).length;
   const ships=DB.all('ships');const transit=ships.filter(s=>['picked','transit','customs'].includes(s.status)).length,deliv=ships.filter(s=>s.status==='delivering').length,exc=ships.filter(s=>s.status==='exception').length;
   const F=finSum();const big=[],tiles=[];let stats='';
-  if(r==='gm'||r==='sales'){if(can('so'))big.push(bigCard('var(--gold)','#161616','cart',L('销售开单','New sale'),L('选客户 → 扫码加商品 → 自动算金额','Customer → scan items → auto total'),"go('so_new')"))}
+  if(['chair','gm','sales'].includes(r)){if(can('so'))big.push(bigCard('var(--gold)','#161616','cart',L('销售开单','New sale'),L('选客户 → 扫码加商品 → 自动算金额','Customer → scan items → auto total'),"go('so_new')"))}
   if(r==='buyer')big.push(bigCard('var(--green)','#fff','in',L('采购下单','New purchase'),L('选供应商 → 加商品 → 提交下单','Supplier → items → place order'),"go('po_new')"));
   if(r==='keeper'){big.push(bigCard('var(--green)','#fff','in',L('采购入库','Receive goods'),L('选订单 → 填数量 → 扫码核对','Pick PO → quantities → scan check'),"go('recv_pick')"));
     big.push(bigCard('var(--gold)','#161616','out',L('销售出库','Ship orders'),L(`${toShip} 张待出库 · 确认发货扣库存`,`${toShip} to ship · confirm & deduct`),"S.docSeg='so';S.docF='approved';tab('docs')"))}
@@ -206,19 +223,21 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
     big.push(bigCard('var(--green)','#fff','chart',L('利润报表','Profit report'),L('销售额 · 成本 · 毛利','Sales · cost · gross profit'),"go('report')"))}
   if(r==='cashier'){big.push(bigCard('var(--green)','#fff','in',L('登记收款','Record receipt'),L('现金 / 银行 / 手机钱包','Cash / bank / mobile money'),"S.finSeg='ar';tab('fin')"));
     big.push(bigCard('var(--orange)','#fff','out',L('执行付款','Make payments'),L(`${F.apprN} 笔总经理已批准待付`,`${F.apprN} approved by GM, waiting`),"S.finSeg='ap';tab('fin')"))}
+  if(can('_docs'))tiles.push(tile('var(--purple)','in',L('入库信息 / 审批','Receipts / approvals'),L('批号 · 财务审批 · 内勤确认','Batch · finance · clerk'),"go('grns')"));
+  if(can('po_prepare')&&r!=='keeper')tiles.push(tile('var(--green)','in',L('登记采购到货','Register arrival'),L('提交财务审批','Submit to finance'),"go('recv_pick')"));
   if(can('stock'))tiles.push(tile('var(--tile)','scan',L('扫码查货','Scan & check'),L('相机扫码 · 秒出库存','Camera scan · instant stock'),'scanLookup()'));
   if(can('take'))tiles.push(tile('var(--blue)','clip',L('库存盘点','Stock count'),L('录实盘数 · 待审核','Enter counts · for review'),"go('take')"));
   if(r==='buyer')tiles.push(tile('var(--blue)','ret',L('采购退货','Return to supplier'),L('提交后由仓库出库','Warehouse ships it out'),"go('pr_new')"));
   if(r==='sales')tiles.push(tile('var(--blue)','ret',L('销售退货','Customer return'),L('提交后由仓库收货','Warehouse receives it'),"go('sr_new')"));
   if(r==='cashier'){tiles.push(tile('var(--blue)','doc',L('资金日记账','Cash book'),L('收付款流水 · 余额','Receipts, payments, balance'),"S.finSeg='book';tab('fin')"))}
-  if(r==='gm')tiles.push(tile('var(--blue)','chart',L('经营报表','Reports'),L('销售 · 利润 · 排行','Sales · profit · ranking'),"go('report')"));
+  if(['chair','gm'].includes(r))tiles.push(tile('var(--blue)','chart',L('经营报表','Reports'),L('销售 · 利润 · 排行','Sales · profit · ranking'),"go('report')"));
   if(tiles.length%2)tiles.push(can('report')?tile('var(--purple)','chart',L('简易报表','Reports'),L('销售额 · 排行 · 流水','Sales · ranking · log'),"go('report')"):tile('var(--purple)','bell',L('消息','Messages'),L('提醒与待办','Alerts & tasks'),"go('msgs')"));
-  if(r==='gm'||r==='sales')stats=statT('g',numK(sales),L('今日销售额','Sales today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
+  if(['chair','gm','sales'].includes(r))stats=statT('g',numK(sales),L('今日销售额','Sales today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='buyer')stats=statT('g',DB.all('po').filter(p=>p.status==='ordered').length,L('在途采购','Open POs'),"S.docSeg='po';S.docF='ordered';tab('docs')")+statT('',transit,L('物流在途','In transit'),"tab('logi')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='keeper')stats=statT('g',toRecv,L('待入库','To receive'),"go('recv_pick')")+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='acct')stats=statT('g',numK(F.arBal),L('应收余额','Receivable'),"S.finSeg='ar';tab('fin')",1)+statT('',numK(F.apBal),L('应付余额','Payable'),"S.finSeg='ap';tab('fin')")+statT(F.unverN?'y':'',F.unverN,L('待核对收款','To verify'),"S.finSeg='book';tab('fin')");
   else stats=statT('g',numK(F.rcvToday),L('今日收款','Received today'),"S.finSeg='book';tab('fin')",1)+statT(F.apprN?'y':'',F.apprN,L('待付款','To pay'),"S.finSeg='ap';tab('fin')")+statT('',numK(F.payMonth),L('本月付款','Paid this month'),"S.finSeg='book';tab('fin')");
-  const todo=[];
+  const todo=[];const grTodo=DB.all('grn').filter(g=>grnCanAct(g)).length;if(grTodo)todo.unshift(['in',L(`${grTodo} 张入库单待您处理`,`${grTodo} receipt(s) need action`),"go('grns')",'var(--purple)']);
   if(own('att')&&!attTodayDone()&&new Date().getHours()<20)todo.unshift(['pin',L('今天还没有上班打卡','You have not checked in today'),S.me.role==='field'?"tab('att')":"go('att')",'#0E7C86']);
   if(can('so_ship')&&toShip&&r!=='keeper')todo.push(['out',L(`${toShip} 张销售单待出库`,`${toShip} order(s) to ship`),"S.docSeg='so';S.docF='approved';tab('docs')",'var(--gold)']);
   if(can('po_recv')&&toRecv&&r!=='keeper')todo.push(['in',L(`${toRecv} 张采购单待入库`,`${toRecv} PO(s) to receive`),"go('recv_pick')",'var(--green)']);
@@ -229,7 +248,7 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   const sf=DB.all('so').filter(s=>s.status==='submitted').length;if(own('so_fin')&&sf)todo.unshift(['calc',L(`${sf} 张销售单待财务审核（收款 / 赊账）`,`${sf} sales order(s) for finance review`),"S.docSeg='so';S.docF='submitted';tab('docs')",'var(--purple)']);
   const sg=DB.all('so').filter(s=>s.status==='credit_gm').length;if(r==='gm'&&sg)todo.unshift(['calc',L(`${sg} 张赊账销售单待您审批`,`${sg} credit order(s) need your approval`),"S.docSeg='so';S.docF='credit_gm';tab('docs')",'var(--red)']);
   if(can('fin_verify')&&F.unverN)todo.push(['check',L(`${F.unverN} 笔收款待核对`,`${F.unverN} receipt(s) to verify`),"S.finSeg='book';tab('fin')",'var(--purple)']);
-  if(r==='gm'&&F.reqN)todo.unshift(['calc',L(`${F.reqN} 笔付款申请待您审批`,`${F.reqN} payment request(s) to review`),"payReview()",'var(--gold)']);
+  if(['gm','ops'].includes(r)&&F.reqN)todo.unshift(['calc',L(`${F.reqN} 笔付款申请待您审批`,`${F.reqN} payment request(s) to review`),"payReview()",'var(--gold)']);
   if(r==='acct'&&F.rejN)todo.push(['x',L(`${F.rejN} 笔付款申请被驳回，待处理`,`${F.rejN} rejected payment request(s)`),"S.finSeg='ap';tab('fin')",'var(--red)']);
   if(can('fin_pay')&&F.apprN)todo.push(['out',L(`${F.apprN} 笔付款总经理已批准，待支付`,`${F.apprN} GM-approved payment(s) to pay`),"S.finSeg='ap';tab('fin')",'var(--orange)']);
   const dr=DB.all('so').concat(DB.all('po')).filter(d=>d.status==='draft'&&d.by===me.id).length;if(dr)todo.push(['edit',L(`${dr} 张草稿未提交`,`${dr} draft(s) not submitted`),"S.docSeg='"+(can('so')?'so':'po')+"';S.docF='draft';tab('docs')",'#8A8478']);
@@ -262,7 +281,7 @@ function chMsgs(id){return DB.all('msg').filter(m=>m.ch===id).sort((a,b)=>a.t-b.
 const chRead=()=>LS.get('rd_'+meId(),{});
 function chUnreadOf(id){const r=chRead()[id]||0;return DB.all('msg').filter(m=>m.ch===id&&m.by!==meId()&&m.t>r&&!m.rc).length}
 function chatUnread(){if(!S.me)return 0;return chList().reduce((a,c)=>a+chUnreadOf(c.id),0)}
-function chMarkRead(id){const r=chRead();const last=chMsgs(id).slice(-1)[0];r[id]=Math.max(r[id]||0,last?last.t:Date.now());LS.set('rd_'+meId(),r)}
+function chMarkRead(id){const r=chRead();const last=chMsgs(id).slice(-1)[0];r[id]=Math.max(r[id]||0,last?last.t:Date.now());LS.set('rd_'+meId(),r);updateUnreadBadge()}
 function chMemNames(c){return c.mem?c.mem.map(u=>userName(u)).join('、'):L('全体同事','Everyone')}
 const avatar=(uid,sz=36)=>{const u=DB.get('users',uid)||{};const n=nmP(u.name)||'?';return `<div class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px;flex:none;background:${ROLE_COLOR[u.role]||'#888'};color:#fff">${esc(n.slice(0,1))}</div>`};
 /* 翻译：按阅读者的语言显示译文（缓存，不重复请求） */
@@ -329,23 +348,23 @@ function chatMsgsHTML(c){const ms=chMsgs(c.id).slice(-300);let last=0;
       (m.loc?(()=>{const u=m.loc.url||(m.loc.lat!=null?gmap(m.loc.lat,m.loc.lng):gmapQ(m.loc.addr||''));return `<div onclick="event.stopPropagation();openExt('${esc(u)}')" style="cursor:pointer;min-width:200px"><b>${ic('pin',14)} ${L('位置','Location')}</b><div class="xs" style="margin-top:2px">${esc(m.loc.addr||(m.loc.lat.toFixed(5)+', '+m.loc.lng.toFixed(5)))}</div>
        <div class="xs" style="margin-top:6px;text-decoration:underline;word-break:break-all;opacity:.9">${esc(u)}</div><div class="xs b" style="margin-top:4px">${L('点击用谷歌地图打开','Tap to open in Google Maps')}</div></div>`})():'')+
       (m.text?`<div style="white-space:pre-wrap;word-break:break-word">${esc(m.text).replace(/@(\S+)/g,'<b>@$1</b>')}</div>`:'')+
-      trs.map(([l,t])=>`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.45)':'var(--line)'};font-size:14px;opacity:.92;white-space:pre-wrap;word-break:break-word"><span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;margin-right:5px;background:${mine?'rgba(255,255,255,.22)':'var(--soft)'}" data-notr>${l==='zh'?'中':l==='en'?'EN':esc(l.toUpperCase())}</span>${esc(t)}</div>`).join('')+(m.text&&!m.tr&&m.by===meId()&&Date.now()-m.t<8000?`<div class="xs" style="opacity:.7;margin-top:4px">${L('翻译中…','Translating…')}</div>`:'');
+      trs.map(([l,t])=>`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.45)':'var(--line)'};font-size:14px;opacity:.92;white-space:pre-wrap;word-break:break-word"><span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;margin-right:5px;background:${mine?'rgba(255,255,255,.22)':'var(--soft)'}" data-notr>${l==='zh'?'中':l==='en'?'EN':esc(l.toUpperCase())}</span>${esc(t)} <button class="pill" style="padding:2px 8px" onclick="event.stopPropagation();msgSpeak('${m.id}','${l}')">${ic('play',12)} ${L('朗读','Listen')}</button></div>`).join('')+(m.text&&!m.tr&&m.by===meId()&&Date.now()-m.t<8000?`<div class="xs" style="opacity:.7;margin-top:4px">${L('翻译中…','Translating…')}</div>`:'');
     return h+`<div class="row" style="gap:8px;margin:8px 0;align-items:flex-start;${mine?'flex-direction:row-reverse':''}">${avatar(m.by,34)}<div style="max-width:76%;min-width:0">${mine||c.type==='dm'?'':`<div class="xs muted" style="margin:0 0 2px 4px">${esc(userName(m.by))}</div>`}
       <div onclick="msgMenu('${m.id}')" style="cursor:pointer;padding:9px 12px;border-radius:16px;${mine?'background:var(--green);color:#fff;border-top-right-radius:4px':'background:#fff;border-top-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)'}">${body}</div></div></div>`}).join('')||`<div class="sm muted" style="text-align:center;margin-top:40px">${L('说点什么吧','Say hello')}</div>`}
 function chatPaint(){if(S.view!=='chat_room')return;const box=$('#msgs'),sc=$('#screen');if(!box)return;const c=chGet(S.chId);if(!c)return;
-  const atBottom=sc.scrollHeight-sc.scrollTop-sc.clientHeight<120;box.innerHTML=chatMsgsHTML(c);chMarkRead(c.id);if(atBottom)sc.scrollTop=sc.scrollHeight}
+  const atBottom=sc.scrollHeight-sc.scrollTop-sc.clientHeight<120;box.innerHTML=chatMsgsHTML(c);chMarkRead(c.id);updateUnreadBadge();if(atBottom)sc.scrollTop=sc.scrollHeight}
 function chBtns(){const has=!!(($('#cIn')||{}).value||'').trim();const p=$('#cPlus'),s=$('#cSend');if(p)p.style.display=has?'none':'flex';if(s)s.style.display=has?'flex':'none'}
 function chIns(t){const i=$('#cIn');const p=i.selectionStart||i.value.length;i.value=i.value.slice(0,p)+t+i.value.slice(p);S.cDraft=i.value;chBtns();i.focus()}
 function chAt(i){const c=chGet(S.chId);if(!c||c.type==='dm'||!i.value.endsWith('@'))return;const us=(c.mem||DB.all('users').map(u=>u.id)).filter(u=>u!==meId());
   openSheet(`<div class="sh">${L('选择要提醒的人','Mention someone')}</div><div class="box" style="padding:4px 14px">${(c.mem?'':`<div class="li" onclick="chAtPick('all')"><div class="av" style="width:32px;height:32px;background:var(--green);color:#fff">@</div><span class="b sm">${L('所有人','Everyone')}</span></div>`)+us.map(u=>`<div class="li" onclick="chAtPick('${u}')">${avatar(u,32)}<span class="sm">${esc(userName(u))}</span></div>`).join('')}</div>`)}
 function chAtPick(u){closeSheet(true);const i=$('#cIn');i.value=i.value+(u==='all'?L('所有人','all'):userName(u))+' ';S.cDraft=i.value;S.cAt=[...(S.cAt||[]),u];i.focus()}
-function chPost(o){const c=chGet(S.chId);if(!c)return;if(c.id===CH_ALL&&!DB.get('chat',CH_ALL))DB.put('chat',{id:CH_ALL,type:'all',mem:null,t:Date.now()});
+function chPost(o,ch=S.chId){const c=chGet(ch);if(!c)return;if(c.id===CH_ALL&&!DB.get('chat',CH_ALL))DB.put('chat',{id:CH_ALL,type:'all',mem:null,t:Date.now()});
   DB.put('msg',{ch:c.id,mem:c.mem||null,t:Date.now(),lg:S.lang,...o});DB.put('chat',{...(DB.get('chat',c.id)||c),lt:Date.now()},{quiet:true});
   S.cReply=null;const r=$('#cReply');if(r)r.style.display='none';chatPaint();const sc=$('#screen');sc.scrollTop=sc.scrollHeight}
 function chSend(){const i=$('#cIn');const t=(i.value||'').trim();if(!t)return;const rp=S.cReply?{id:S.cReply.id,by:S.cReply.by,text:(S.cReply.text||'').slice(0,80)}:null;
   const id=uid('ms');chPost({id,text:t,reply:rp,at:S.cAt||[]});i.value='';S.cDraft='';S.cAt=[];i.style.height='42px';chBtns();i.focus();
   msgTr(t).then(({src,tr})=>{const m=DB.get('msg',id);if(m&&!m.rc&&Object.keys(tr).length){DB.put('msg',{...m,src,tr});chatPaint()}})}
-function chMore(){openSheet(`<div class="sh">${L('发送','Send')}</div><div class="wtiles" style="margin-top:12px">
+function chMore(){openSheet(`<div class="sh">${L('发送','Send')}</div><button class="bigbtn" onclick="closeSheet(true);speechTranslate()">${ic('translate',18)} ${L('语音识别 → 翻译 → 朗读','Speech → translate → listen')}</button><div class="wtiles" style="margin-top:12px">
    <div class="wtile" style="background:var(--blue)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),false)"><div class="wti">${ic('image')}</div><div class="b">${L('相册图片','Photo')}</div></div>
    <div class="wtile" style="background:var(--green)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),true)"><div class="wti">${ic('camera')}</div><div class="b">${L('拍照','Camera')}</div></div>
    <div class="wtile" style="background:var(--orange)" onclick="closeSheet(true);chLoc()"><div class="wti">${ic('pin')}</div><div class="b">${L('发送位置','Location')}</div></div></div>`)}
@@ -368,6 +387,7 @@ function locHelp(err,manual){const e=typeof err==='string'?locErr('fail'):err||l
 function msgMenu(id){const m=DB.get('msg',id);if(!m||m.rc)return;const mine=m.by===meId();const canRc=mine&&Date.now()-m.t<120e3;
   openSheet(`<div class="box" style="padding:4px 16px;margin-top:6px">
    <div class="li" onclick="S.cReply=DB.get('msg','${id}');closeSheet(true);render(false);setTimeout(()=>$('#cIn')&&$('#cIn').focus(),50)">${ic('reply',18)} <span class="sm b">${L('回复','Reply')}</span></div>
+   ${m.text?`<div class="li" onclick="msgRetranslate('${id}')">${ic('translate',18)} ${L('重新翻译','Retry translation')}</div><div class="li" onclick="msgSpeak('${id}','original')">${ic('play',18)} ${L('朗读原文','Read original')}</div>${msgLangs(m).filter(l=>trOf(m,l)&&trOf(m,l)!==m.text).map(l=>`<div class="li" onclick="msgSpeak('${id}','${l}')">${ic('play',18)} ${L('朗读译文','Read translation')} · ${esc(l.toUpperCase())}</div>`).join('')}`:''}
    ${m.text?`<div class="li" onclick="copyText(DB.get('msg','${id}').text);closeSheet(true)">${ic('copy',18)} <span class="sm b">${L('复制','Copy')}</span></div>`:''}
    ${m.loc?`<div class="li" onclick="const l=DB.get('msg','${id}').loc;copyText(l.url||(l.lat!=null?gmap(l.lat,l.lng):gmapQ(l.addr||'')));closeSheet(true)">${ic('link',18)} <span class="sm b">${L('复制谷歌地图链接','Copy Google Maps link')}</span></div>`:''}
    ${canRc?`<div class="li" onclick="DB.put('msg',{...DB.get('msg','${id}'),rc:true,text:'',img:'',thumb:'',loc:null,voice:'',tr:null});closeSheet(true);chatPaint()">${ic('ret',18)} <span class="sm b red">${L('撤回（2 分钟内）','Recall (within 2 min)')}</span></div>`:''}</div>`)}
@@ -392,34 +412,47 @@ async function revGeo(lat,lng){try{const r=await Promise.race([fetch(`https://no
 let VREC=null,VAUD=null,VPLAY=null;
 const vMime=()=>{if(!window.MediaRecorder)return '';for(const m of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus','audio/ogg'])if(MediaRecorder.isTypeSupported(m))return m;return ''};
 const srLang=()=>({zh:'zh-CN',en:'en-GH',fr:'fr-FR',ar:'ar-EG',pt:'pt-PT',sw:'sw-KE',am:'am-ET',ha:'ha-NG',yo:'yo-NG',ig:'ig-NG',zu:'zu-ZA',af:'af-ZA'})[S.lang]||S.lang||'zh-CN';
-async function vStart(ev){ev.preventDefault();try{ev.target.setPointerCapture(ev.pointerId)}catch(e){}if(VREC)return;const mime=vMime();
-  if(!mime||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return toast(L('这个手机 / 浏览器不支持录音','This phone / browser cannot record audio'));
-  let st;try{await nativePerms(['microphone']);st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){return micHelp()}
-  const R={st,chunks:[],t0:Date.now(),y0:ev.clientY||0,cancel:false,text:'',sr:null,mime};VREC=R;
-  R.mr=new MediaRecorder(st,{mimeType:mime,audioBitsPerSecond:24000});R.mr.ondataavailable=e=>{if(e.data&&e.data.size)R.chunks.push(e.data)};R.mr.start(250);
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(SR){try{const s=new SR();s.lang=srLang();s.continuous=true;s.interimResults=true;let fin='';s.onresult=e=>{let it='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;else it+=e.results[i][0].transcript}R.text=(fin+it).trim();const o=$('#vTx');if(o)o.textContent=R.text};
-    s.onerror=()=>{};R.srDone=new Promise(r=>{s.onend=r});s.start();R.sr=s}catch(e){}}
-  const ov=document.createElement('div');ov.id='vOv';ov.style.cssText='position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:90;background:rgba(0,0,0,.78);color:#fff;border-radius:22px;padding:18px 22px;text-align:center;min-width:200px;max-width:80vw';
-  ov.innerHTML=`<div style="font-size:34px">🎙️</div><div id="vT" style="font-size:20px;font-weight:800;margin-top:4px">0″</div><div id="vTx" style="font-size:13px;opacity:.85;margin-top:6px;max-height:80px;overflow:hidden"></div><div id="vH" style="font-size:12px;opacity:.75;margin-top:8px">${L('松开发送，上滑取消','Release to send · slide up to cancel')}</div>`;document.body.appendChild(ov);
-  R.tm=setInterval(()=>{const s=Math.floor((Date.now()-R.t0)/1000);const t=$('#vT');if(t)t.textContent=s+'″';if(s>=60)vStop(false)},250);if(navigator.vibrate)navigator.vibrate(30)}
+async function voiceCaps(){if(!isNative()||!NX())return {};try{return await NX().voiceCapabilities()}catch(e){return {}}}
+async function vStart(ev){ev.preventDefault();try{ev.target.setPointerCapture(ev.pointerId)}catch(e){}if(VREC)return;
+  const R={starting:true,t0:Date.now(),y0:ev.clientY||0,cancel:false,text:'',ch:S.chId};VREC=R;
+  try{await nativePerms(['microphone']);const caps=await voiceCaps();R.native=!!caps.record;
+    if(R.released){VREC=null;return}
+    if(R.native)await NX().startVoice();
+    else{const mime=vMime();if(!mime||!navigator.mediaDevices?.getUserMedia)throw new Error(L('此版本不支持录音，请更新 APP','Recording unavailable; update the app'));
+      R.st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});R.mime=mime;R.chunks=[];
+      R.mr=new MediaRecorder(R.st,{mimeType:mime,audioBitsPerSecond:64000});R.mr.ondataavailable=e=>{if(e.data?.size)R.chunks.push(e.data)};R.mr.start(250)}
+    R.t0=Date.now();R.starting=false;
+    if(R.released){await vStop(true);return}
+    // Android WebView has no Web Speech API. Native recognition uses the separate voice-translation action.
+    const SR=!isNative()&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+    if(SR){try{const sr=new SR();sr.lang=srLang();sr.continuous=true;sr.interimResults=true;let fin='';sr.onresult=e=>{let it='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;else it+=e.results[i][0].transcript}R.text=(fin+it).trim()};R.srDone=new Promise(r=>sr.onend=r);sr.onerror=()=>{};sr.start();R.sr=sr}catch(e){}}
+    const ov=document.createElement('div');ov.id='vOv';ov.style.cssText='position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:90;background:rgba(0,0,0,.78);color:#fff;border-radius:22px;padding:20px;text-align:center';ov.innerHTML=`🎙️<div id="vT">0″</div><div id="vH">${L('松开发送，上滑取消','Release to send · slide up to cancel')}</div>`;document.body.appendChild(ov);
+    R.tm=setInterval(()=>{const t=$('#vT');if(t)t.textContent=Math.floor((Date.now()-R.t0)/1000)+'″';if(Date.now()-R.t0>=60000)vStop(false)},250);
+  }catch(e){if(R.st)R.st.getTracks().forEach(t=>t.stop());if(R.native)try{await NX().stopVoice({cancel:true})}catch(_){}VREC=null;toast(String(e.message||e));if(/permission|denied|权限/i.test(String(e)))micHelp()}}
 function vMove(ev){if(!VREC)return;const up=(VREC.y0-(ev.clientY||0))>70;VREC.cancel=up;const o=$('#vOv'),h=$('#vH');if(o)o.style.background=up?'rgba(200,40,40,.85)':'rgba(0,0,0,.78)';if(h)h.textContent=up?L('松开取消','Release to cancel'):L('松开发送，上滑取消','Release to send · slide up to cancel')}
-async function vStop(cancel){const R=VREC;if(!R)return;VREC=null;clearInterval(R.tm);const ov=$('#vOv');if(ov)ov.remove();cancel=cancel||R.cancel;const dur=Math.round((Date.now()-R.t0)/100)/10;
-  const done=new Promise(r=>{R.mr.onstop=r});try{R.mr.stop()}catch(e){}if(R.sr){try{R.sr.stop()}catch(e){}}await done;R.st.getTracks().forEach(t=>t.stop());
-  if(cancel)return toast(L('已取消','Cancelled'));if(dur<1)return toast(L('说话时间太短','Too short'));
-  if(R.srDone)await Promise.race([R.srDone,new Promise(r=>setTimeout(r,1500))]);
-  const blob=new Blob(R.chunks,{type:R.mime.split(';')[0]});const id=uid('ms');toast(L('正在发送语音…','Sending voice…'),false);
-  const url=await upVoice(blob);const text=(R.text||'').trim();chPost({id,voice:url,dur:Math.min(60,Math.round(dur)),text,vt:!!text});
-  if(text)msgTr(text).then(({src,tr})=>{const m=DB.get('msg',id);if(m&&!m.rc&&Object.keys(tr).length){DB.put('msg',{...m,src,tr});chatPaint()}})}
+async function vStop(cancel){const R=VREC;if(!R)return;if(R.starting){R.released=true;R.cancel=true;return}VREC=null;clearInterval(R.tm);$('#vOv')?.remove();cancel=cancel||R.cancel;const dur=(Date.now()-R.t0)/1000;
+  try{let blob;if(R.native){const result=await NX().stopVoice({cancel:!!cancel||dur<1});if(cancel||dur<1)return;blob=await (await fetch(result.data)).blob()}
+    else{await new Promise((resolve,reject)=>{R.mr.onstop=resolve;R.mr.onerror=reject;R.mr.stop()});R.st.getTracks().forEach(t=>t.stop());if(R.sr)R.sr.stop();if(cancel||dur<1)return;if(R.srDone)await Promise.race([R.srDone,new Promise(r=>setTimeout(r,1500))]);blob=new Blob(R.chunks,{type:R.mr.mimeType||R.mime})}
+    if(!blob.size)throw new Error(L('录音为空，请重试','Empty recording; try again'));const id=uid('ms');toast(L('正在发送语音…','Sending voice…'),false);const url=await upVoice(blob),text=(R.text||'').trim();chPost({id,voice:url,dur:Math.min(60,Math.round(dur)),text,vt:!!text},R.ch);
+    if(text)msgTr(text).then(({src,tr})=>{const m=DB.get('msg',id);if(m&&!m.rc){DB.put('msg',{...m,src,tr});chatPaint()}})
+  }catch(e){toast(L('语音发送失败：','Voice send failed: ')+String(e.message||e))}finally{R.st?.getTracks().forEach(t=>t.stop());try{R.sr?.stop()}catch(e){}}}
+// Decode browser recordings into PCM WAV before sharing. Native recordings are standard AAC/M4A.
+async function portableVoice(blob){if(!/webm|ogg/.test(blob.type))return blob;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return blob;let ctx;try{ctx=new AC();const decoded=await ctx.decodeAudioData(await blob.arrayBuffer()),offline=new OfflineAudioContext(1,Math.ceil(decoded.duration*16000),16000),source=offline.createBufferSource();source.buffer=decoded;source.connect(offline.destination);source.start();const a=await offline.startRendering(),n=a.length,c=a.numberOfChannels,b=new ArrayBuffer(44+n*c*2),v=new DataView(b);const txt=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};txt(0,'RIFF');v.setUint32(4,b.byteLength-8,true);txt(8,'WAVE');txt(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,c,true);v.setUint32(24,a.sampleRate,true);v.setUint32(28,a.sampleRate*c*2,true);v.setUint16(32,c*2,true);v.setUint16(34,16,true);txt(36,'data');v.setUint32(40,n*c*2,true);for(let i=0;i<n;i++)for(let j=0;j<c;j++){const x=Math.max(-1,Math.min(1,a.getChannelData(j)[i]));v.setInt16(44+(i*c+j)*2,x<0?x*32768:x*32767,true)}return new Blob([b],{type:'audio/wav'})}catch(e){return blob}finally{if(ctx)await ctx.close()}}
+async function speechTranslate(){const ch=S.chId;if(VREC)return;const caps=await voiceCaps();if(!caps.recognize)return toast(L('请更新 APP，或用键盘麦克风输入后发送翻译','Update the app, or use keyboard dictation then send for translation'));
+  try{await nativePerms(['microphone']);const r=await NX().recognizeSpeech({lang:srLang()});if(r.cancelled||!r.text)return;S.speechDraft={text:r.text,ch};openSheet(`<div class="sh">${L('语音翻译','Voice translation')}</div><textarea class="inp" id="spText">${esc(r.text)}</textarea><button class="bigbtn" onclick="sendSpeechText()">${L('确认文字，发送并翻译','Confirm text, send & translate')}</button>`)}catch(e){toast(String(e.message||e))}}
+async function sendSpeechText(){const d=S.speechDraft,text=($('#spText').value||'').trim();if(!d||!text)return;S.speechDraft=null;closeSheet(true);const id=uid('ms');chPost({id,text,vt:true},d.ch);const {src,tr}=await msgTr(text);const m=DB.get('msg',id);if(m&&!m.rc){DB.put('msg',{...m,src,tr});chatPaint()}}
+async function msgRetranslate(id){const m=DB.get('msg',id);if(!m?.text||m.rc)return;toast(L('正在翻译…','Translating…'),false);const {src,tr}=await msgTr(m.text);const current=DB.get('msg',id);if(!current||current.rc)return;if(!Object.keys(tr).length)return toast(L('翻译服务暂时不可用，请检查网络后重试','Translation service unavailable; check the network and retry'));DB.put('msg',{...current,src,tr});chatPaint();toast(L('翻译完成','Translation ready'),false)}
+async function msgSpeak(id,lang){const m=DB.get('msg',id);if(!m||m.rc)return;const text=lang==='original'?m.text:trOf(m,lang);if(!text)return toast(L('译文尚未生成，请稍后重试','Translation is not ready; try again'));const l=lang==='original'?(m.src||m.lg||'zh'):lang;const tag={zh:'zh-CN',en:'en-US'}[l]||l;
+  try{const caps=await voiceCaps();if(caps.speak){await NX().speak({text,lang:tag});return}if(!window.speechSynthesis)throw new Error(L('请更新 APP 以使用朗读','Update the app to enable speech'));speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=tag;u.onerror=()=>toast(L('朗读失败，请检查系统语音包','Speech failed; check system voice packs'));speechSynthesis.speak(u)}catch(e){toast(String(e.message||e))}}
 /* 上传语音：云端存到进销存自己的语音空间（jxc-voice），同一段录音只存一份；本机模式直接存在消息里 */
-async function upVoice(blob){const toData=()=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob)});if(!DB.cloud)return toData();
-  try{const u8=new Uint8Array(await blob.arrayBuffer());if(u8.length>1400000)return toData();const h=await sha1(u8);const type=blob.type||'audio/webm';const ext=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm';
+async function upVoice(blob){blob=await portableVoice(blob);const toData=()=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob)});if(!DB.cloud)return toData();
+  try{const u8=new Uint8Array(await blob.arrayBuffer());if(u8.length>2400000)return toData();const h=await sha1(u8);const type=blob.type||'audio/webm';const ext=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':type.includes('wav')?'wav':'webm';
     const name='a/'+h.slice(0,2)+'/'+h+'.'+ext;const BASE=CFG.supabaseUrl.replace(/\/$/,'');
     for(let a=0;a<3;a++){if(a)await new Promise(z=>setTimeout(z,[0,800,2000][a]));try{const r=await fetch(BASE+'/storage/v1/object/jxc-voice/'+name,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':type==='audio/mp4'?'audio/mp4':type,'x-upsert':'false'},body:blob});
       const t=r.ok?'':await r.text().catch(()=>'');if(r.ok||/Duplicate|already exists/i.test(t))return BASE+'/storage/v1/object/public/jxc-voice/'+name;if(r.status<500&&r.status!==429)break}catch(e){}}}catch(e){}
   return toData()}
-function vPlay(id){const m=DB.get('msg',id);if(!m||!m.voice)return;if(VAUD&&VPLAY===id){VAUD.pause();VAUD=null;VPLAY=null;chatPaint();return}if(VAUD)VAUD.pause();
-  VAUD=new Audio(m.voice);VPLAY=id;VAUD.onended=VAUD.onerror=()=>{VAUD=null;VPLAY=null;chatPaint()};VAUD.play().catch(()=>{toast(L('无法播放这段语音','Cannot play this voice message'));VAUD=null;VPLAY=null});chatPaint()}
+async function vPlay(id){const m=DB.get('msg',id);if(!m?.voice)return;if(VAUD&&VPLAY===id){VAUD.pause();VAUD=null;VPLAY=null;chatPaint();return}if(VAUD)VAUD.pause();const a=new Audio(m.voice);VAUD=a;VPLAY=id;
+  const reset=()=>{if(VAUD===a){VAUD=null;VPLAY=null;chatPaint()}};a.onended=reset;a.onerror=()=>{if(VAUD===a)toast(L('语音无法解码或下载，请检查网络；旧录音可让发送人用新版重发','Cannot decode/download audio; check network or resend old recordings with the updated app'));reset()};chatPaint();try{await a.play()}catch(e){if(VAUD!==a)return;toast(L('播放失败：','Playback failed: ')+String(e.message||e));reset()}}
 function vMode(on){S.cVoice=on;const t=$('#cTxtRow'),v=$('#cVoiceBtn'),mb=$('#cMic');if(t)t.style.display=on?'none':'flex';if(v)v.style.display=on?'flex':'none';if(mb)mb.innerHTML=ic(on?'keyboard':'mic',20);if(!on){const i=$('#cIn');i&&i.focus()}}
 
 /* ===== 外勤打卡：定位 + 带水印的现场照片（姓名、时间、地址、经纬度）。总经理、销售经理、运营经理可查看，出勤统计报给销售经理 ===== */
@@ -435,7 +468,7 @@ V.att=()=>{const mine=DB.all('att').filter(a=>a.by===meId()).sort((a,b)=>b.t-a.t
     <div style="font-size:40px;font-weight:800;margin:6px 0" id="attClock" data-notr>${pad2(new Date().getHours())}:${pad2(new Date().getMinutes())}</div>
     <div class="row gap" style="justify-content:center;flex-wrap:wrap;margin-top:6px">
      ${(vis?['in','visit','out']:['in','out']).map(k=>{const dis=k==='in'&&hasIn||k==='out'&&(hasOut||!hasIn);return `<button class="bigbtn ${k===next?'':'ghost'}" style="flex:1;min-width:92px;height:50px;font-size:14px;${dis?'opacity:.4':''}" ${dis?'disabled':''} onclick="attGo('${k}')">${ic(k==='visit'?'user':'pin',16)} ${L(ATT_T[k][0],ATT_T[k][1])}</button>`}).join('')}</div>
-    <div class="xs muted" style="margin-top:12px;line-height:1.6">${L('打卡时自动定位，并用相机拍一张现场照片，照片上加水印（姓名、时间、地址、经纬度）。总经办（总经理、运营经理）能看到所有人的打卡汇总。','Each check-in records your location and a camera photo with a watermark (name, time, address, coordinates). The GM office can see everyone\'s records.')}</div></div>
+    <div class="xs muted" style="margin-top:12px;line-height:1.6">${L('打卡时自动定位，并用相机拍一张现场照片，照片上加水印（姓名、时间、地址、经纬度）。董事长、总经理和运营经理能看到所有人的打卡汇总；除董事长外全员须拍照打卡。','Each check-in records your location and a camera photo with a watermark (name, time, address, coordinates). The chairman, GM and operations can see everyone\'s records.')}</div></div>
    <div class="sec-h">${L('我的打卡记录','My check-ins')}</div>${attList(mine.slice(0,60),false)}</div>`};
 function attList(l,showName){return `<div class="box" style="margin-top:0;padding:4px 16px">${l.map(a=>`<div class="li" onclick="attView('${a.id}')">${a.thumb||a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none" loading="lazy">`:`<div class="qi">${ic('pin',18)}</div>`}
   <div style="flex:1;min-width:0"><div class="b sm one">${showName?esc(userName(a.by))+' · ':''}${L(ATT_T[a.type][0],ATT_T[a.type][1])}${a.cus?' · '+esc(ptName(a.cus)):''}</div><div class="xs muted one">${fdate(a.t)}</div><div class="xs muted one">${a.approx?`<span class="red b">${L('大致位置','Approx.')}</span> · `:''}${esc(a.addr||(a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):L('未定位','No location')))}</div></div></div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有打卡记录','No check-ins yet')}</div>`}</div>`}
@@ -446,7 +479,7 @@ function attView(id){const a=DB.get('att',id);openSheet(`<div class="sh">${L(ATT
   ${a.lat?`<div class="xs muted" style="margin-top:10px;word-break:break-all">${esc(gmap(a.lat,a.lng))}</div><div class="row gap" style="margin-top:10px"><button class="bigbtn ghost" style="flex:1" onclick="copyText('${gmap(a.lat,a.lng)}')">${ic('copy',16)} ${L('复制地图链接','Copy map link')}</button><button class="bigbtn" style="flex:1" onclick="openExt('${gmap(a.lat,a.lng)}')">${ic('pin',16)} ${L('谷歌地图','Google Maps')}</button></div>`:''}`)}
 /* 打卡：先定位，再拍照（加水印），可选客户与备注 */
 function attRetry(){attGo(S.attLast||'in')}
-async function attGo(type,approx){S.attLast=type;toast(L('正在定位…','Getting location…'),false);let p;
+async function attGo(type,approx){if(!own('att'))return toast(L('董事长无需打卡','The chairman is exempt from check-in'));S.attLast=type;toast(L('正在定位…','Getting location…'),false);let p;
   if(approx){p=await ipPos();if(!p)return toast(L('网络定位也失败了，请检查网络','Network location failed too — check the connection'))}
   else try{p=await getPos({exact:true})}catch(e){return locHelp(e,false)}
   const addr=await revGeo(p.lat,p.lng);S.att={type,...p,addr,photo:'',thumb:'',cus:'',note:''};attSheet()}
@@ -456,12 +489,12 @@ function attSheet(){const a=S.att;openSheet(`<div class="sh">${L(ATT_T[a.type][0
   ${a.type==='visit'?`<div class="fld"><label>${L('拜访客户','Customer visited')}</label>${partnerSel('cus',a.cus,"S.att.cus=this.value")}</div>`:''}
   <div class="fld"><label>${L('备注（可选）','Note (optional)')}</label><input class="inp" style="background:var(--card)" value="${esc(a.note)}" oninput="S.att.note=this.value"></div>
   <button class="bigbtn" style="width:100%;margin-top:14px" onclick="attSave()">${ic('check',18)} ${L('确认打卡','Check in')}</button>`)}
-function attPhoto(){camShot(async f=>{toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
+function attPhoto(){if(!own('att'))return;camShot(async f=>{toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
     const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)} · ${L(ATT_T[a.type][0],ATT_T[a.type][1])}`,new Date().toLocaleString(S.lang==='zh'?'zh-CN':'en-GB'),a.addr||'',`${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} ±${a.acc}m${a.approx?' · '+L('网络大致位置','approx.'):''}`].filter(Boolean);
     const [big,small]=await Promise.all([wmImg(f,1280,lines),wmImg(f,240,[])]);const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;attSheet()},()=>attSheet())}
 /* 应用内相机：直接打开摄像头拍照（不用选相册）；手机不支持时退回系统相机 */
 function camFallback(cb){const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>{const f=i.files[0];if(f)cb(f)};i.click()}
-async function camShot(cb,back){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return camFallback(cb);
+async function camShot(cb,back){const caps=await voiceCaps();if(caps.camera&&isNative()){try{await nativePerms(['camera']);const photo=await NX().capturePhoto();if(photo.cancelled){back&&back();return}cb(await (await fetch(photo.data)).blob());return}catch(e){toast(String(e.message||e));back&&back();return}}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return camFallback(cb);
   let st;try{await nativePerms(['camera']);st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false})}catch(e){return camFallback(cb)}
   const ov=document.createElement('div');ov.id='camOv';ov.style.cssText='position:fixed;inset:0;z-index:95;background:#000;display:flex;flex-direction:column';
   ov.innerHTML=`<video id="camV" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;min-height:0"></video>
@@ -482,7 +515,7 @@ function wmImg(f,max,lines){return new Promise(res=>{const r=new FileReader();r.
     const h=wrap.length*lh+fs*1.2;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,c.height-h,c.width,h);x.fillStyle='#fff';x.textBaseline='top';wrap.forEach((t,i)=>x.fillText(t,fs,c.height-h+fs*.6+i*lh));
     x.fillStyle='#F2B705';x.fillRect(0,c.height-h,Math.max(6,fs/3),h)}
   res(c.toDataURL('image/jpeg',.82))};im.src=r.result};r.readAsDataURL(f)})}
-function attSave(){const a=S.att;if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
+function attSave(){if(!own('att'))return;const a=S.att;if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
   DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,approx:!!a.approx,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);toast(L('打卡成功','Checked in'),false);render(false)}
 /* 考勤统计：按人、按月；出勤天数、首次 / 末次打卡、拜访次数；点人看明细 */
 V.att_stats=()=>{const m=S.attM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
@@ -506,14 +539,15 @@ function exportAtt(m){const [y,mo]=m.split('-').map(Number);const from=new Date(
 /* ===== 费用报销：办公费、外勤报销、杂费。普通费用：提交 → 会计入账 → 出纳付款；特殊费用（超过限额或标为特殊）：先由总经理或运营经理审批，再报备财务 ===== */
 const EXP_C={office:['办公用品','Office supplies'],rent:['房租水电','Rent & utilities'],travel:['交通差旅','Travel & transport'],meal:['餐饮招待','Meals & hospitality'],comm:['通讯网络','Phone & internet'],
   field:['外勤报销','Field claims'],freight:['运费物流','Freight & logistics'],clear:['清关报关','Customs & clearance'],repair:['维修保养','Repairs'],staff:['工资福利','Staff costs'],other:['其他','Other']};
-const EXP_ST={submitted:['待审核','Submitted','b-gold'],approved:['已审批，待入账','Approved, to book','b-blue'],booked:['已入账，待付款','Booked, to pay','b-blue'],paid:['已付款','Paid','b-green'],rejected:['已驳回','Rejected','b-red'],void:['已撤回','Withdrawn','b-grey']};
-const expLimit=()=>+((DB.get('settings','app')||{}).expLimit||1000);
+const EXP_ST={gm_pending:['待总经理审批','GM review','b-gold'],submitted:['待运营经理审批','Operations review','b-gold'],approved:['已审批，待入账','Approved, to book','b-blue'],booked:['已入账，待付款','Booked, to pay','b-blue'],paid:['已付款','Paid','b-green'],rejected:['已驳回','Rejected','b-red'],void:['已撤回','Withdrawn','b-grey']};
+const expLimit=()=>2000;
 const expName=k=>L((EXP_C[k]||EXP_C.other)[0],(EXP_C[k]||EXP_C.other)[1]);
 /* 当前用户在这笔费用上能做什么 */
 function expAct(e){const r=S.me.role;
-  if(e.status==='submitted'&&e.special&&can('exp_approve'))return 'approve';
-  if((e.status==='submitted'&&!e.special||e.status==='approved')&&own('exp_book'))return 'book';
-  if(e.status==='booked'&&own('fin_pay'))return 'pay';return ''}
+  if(e.status==='submitted'&&r==='ops')return 'approve';
+  if(e.status==='gm_pending'&&r==='gm'&&e.op)return 'gm';
+  if(e.status==='approved'&&e.op&&(+e.amt<=expLimit()||e.gm)&&own('exp_book'))return 'book';
+  if(e.status==='booked'&&e.op&&(+e.amt<=expLimit()||e.gm)&&own('fin_pay'))return 'pay';return ''}
 function expTodo(){if(!S.me)return 0;return DB.all('exp').filter(e=>expAct(e)).length+DB.all('exp').filter(e=>e.by===S.me.id&&e.status==='rejected'&&!e.seen).length}
 const expSeeAll=()=>can('exp_approve')||own('exp_book')||own('fin_pay');
 V.exp=()=>{const seg=S.expSeg||(expTodo()?'todo':'mine');const all=DB.all('exp').sort((a,b)=>b.t-a.t);
@@ -521,7 +555,7 @@ V.exp=()=>{const seg=S.expSeg||(expTodo()?'todo':'mine');const all=DB.all('exp')
   const mineM=all.filter(e=>e.by===S.me.id&&e.t>=mon&&!['rejected','void'].includes(e.status)).reduce((a,e)=>a+(+e.amt||0),0);
   return hdr(L('费用报销','Expenses'),expSeeAll()?`<button class="icbtn" onclick="go('exp_stats')">${ic('chart')}</button>`:'')+`<div class="pad">
    <button class="bigbtn" style="width:100%;margin-top:6px" onclick="expNew()">${ic('plus',18)} ${L('新增费用 / 报销','New expense / claim')}</button>
-   <div class="xs muted" style="margin-top:8px;line-height:1.6">${L(`流程：提交 → 会计入账 → 出纳付款。单笔超过 ${money(expLimit())} 或标为“特殊费用”的，先由总经理或运营经理审批，再报备财务。`,`Flow: submit → accountant books → cashier pays. Over ${money(expLimit())} or marked special: the GM or operations manager approves first.`)}</div>
+   <div class="xs muted" style="margin-top:8px;line-height:1.6">${L(`每笔费用：提交 → 运营经理审批 → 会计入账 → 出纳付款；单笔超过 ${money(expLimit())}，运营经理审批后还需总经理审批。`,`Every expense: submit → operations → accountant → cashier. Over ${money(expLimit())}: GM approval is also required after operations.`)}</div>
    <div class="seg" style="margin-top:12px">${[['mine',L('我的','Mine')],...(expSeeAll()||expTodo()?[['todo',L('待我处理','To do')+(expTodo()?` (${expTodo()})`:'')]]:[]),...(expSeeAll()?[['all',L('全部','All')]]:[])].map(([k,t])=>`<button class="${seg===k?'on':''}" onclick="S.expSeg='${k}';render(false)">${t}</button>`).join('')}</div>
    ${seg==='mine'?`<div class="xs muted" style="margin:8px 2px">${L('本月我的费用','My expenses this month')} <b data-notr>${money(mineM)}</b></div>`:''}
    <div style="margin-top:8px">${l.slice(0,120).map(e=>`<div class="box" style="margin-top:8px;padding:12px 14px;cursor:pointer" onclick="expView('${e.id}')"><div class="row between" style="gap:8px"><div style="min-width:0"><div class="b sm one">${expName(e.cat)}${e.special?` <span class="badge b-red" style="padding:1px 7px">${L('特殊','Special')}</span>`:''}</div><div class="xs muted one">${esc(userName(e.by))} · ${fdate(e.t)}${e.note?' · '+esc(e.note):''}</div></div>
@@ -529,28 +563,29 @@ V.exp=()=>{const seg=S.expSeg||(expTodo()?'todo':'mine');const all=DB.all('exp')
 function expNew(){S.ex={cat:S.me.role==='field'?'field':'office',amt:'',note:'',photo:'',thumb:'',special:false};expForm()}
 function expForm(){const e=S.ex;openSheet(`<div class="sh">${L('新增费用 / 报销','New expense / claim')}</div>
   <div class="fld"><label>${L('类别','Category')}</label><div class="chips wrap" id="exC">${Object.keys(EXP_C).map(k=>`<span class="chip ${e.cat===k?'on':''}" onclick="S.ex.cat='${k}';$$('#exC .chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${expName(k)}</span>`).join('')}</div></div>
-  <div class="fld"><label>${L('金额','Amount')} (${esc(CUR())} ${baseIso()})</label><input class="inp" type="number" inputmode="decimal" style="background:var(--card);font-size:20px;font-weight:800" value="${e.amt}" oninput="S.ex.amt=this.value;$('#exS').style.display=(+this.value>expLimit())?'':'none'"><div class="xs red" id="exS" style="display:${+e.amt>expLimit()?'':'none'};margin-top:4px">${L(`超过 ${money(expLimit())}，需要总经理或运营经理审批`,`Over ${money(expLimit())}: needs GM / operations approval`)}</div></div>
+  <div class="fld"><label>${L('金额','Amount')} (${esc(CUR())} ${baseIso()})</label><input class="inp" type="number" inputmode="decimal" style="background:var(--card);font-size:20px;font-weight:800" value="${e.amt}" oninput="S.ex.amt=this.value;$('#exS').style.display=(+this.value>expLimit())?'':'none'"><div class="xs red" id="exS" style="display:${+e.amt>expLimit()?'':'none'};margin-top:4px">${L(`超过 ${money(expLimit())}，运营经理审批后，还需要总经理审批`,`Over ${money(expLimit())}: operations then GM approval`)}</div></div>
   <div class="fld"><label>${L('用途说明（必填）','What for (required)')}</label><input class="inp" style="background:var(--card)" value="${esc(e.note)}" placeholder="${L('如：拜访库马西客户打车费','e.g. taxi to a customer in Kumasi')}" oninput="S.ex.note=this.value"></div>
   <div class="row gap" style="margin-top:12px;align-items:center"><div class="ph" id="exPh" onclick="pickImage2(1280,(u,t)=>{S.ex.photo=u;S.ex.thumb=t;$('#exPh').innerHTML='<img src=&quot;'+t+'&quot;>'},true)">${e.thumb?`<img src="${esc(e.thumb)}">`:ic('camera')}</div><span class="sm muted">${L('拍发票 / 收据（建议）','Photo of the receipt (recommended)')}</span></div>
-  <label class="row gap" style="margin-top:12px"><input type="checkbox" ${e.special?'checked':''} onchange="S.ex.special=this.checked" style="width:20px;height:20px;accent-color:#0B7A4B"><span class="sm b">${L('特殊费用（需总经理或运营经理审批）','Special expense (needs GM / operations approval)')}</span></label>
+  <label class="row gap" style="margin-top:12px"><input type="checkbox" ${e.special?'checked':''} onchange="S.ex.special=this.checked" style="width:20px;height:20px;accent-color:#0B7A4B"><span class="sm b">${L('标记为特殊费用（每笔仍须运营经理审批）','Special expense (operations review required)')}</span></label>
   <button class="bigbtn" style="width:100%;margin-top:16px" onclick="expSave()">${L('提交','Submit')}</button>`)}
 function expSave(){const e=S.ex;const amt=+e.amt;if(!(amt>0))return toast(L('请填写金额','Enter the amount'));if((e.note||'').trim().length<2)return toast(L('请填写用途说明','Say what it was for'));
   const sp=!!e.special||amt>expLimit();DB.put('exp',{cat:e.cat,amt:Math.round(amt*100)/100,note:e.note.trim(),photo:e.photo,thumb:e.thumb,special:sp,status:'submitted',t:Date.now()});
-  closeSheet(true);toast(sp?L('已提交，等待总经理或运营经理审批','Submitted — waiting for GM / operations approval'):L('已提交，等待会计入账','Submitted — waiting for the accountant'),false);S.expSeg='mine';render(false)}
+  closeSheet(true);toast(L('已提交，等待运营经理审批','Submitted — waiting for operations approval'),false);S.expSeg='mine';render(false)}
 function expView(id){const e=DB.get('exp',id);if(e.by===S.me.id&&e.status==='rejected'&&!e.seen)DB.put('exp',{...e,seen:true},{quiet:true});const act=expAct(e);
   const line=(t,o)=>o?`<div class="xs muted" style="margin-top:4px">${ic('check',12)} ${t}：${esc(userName(o.by))} · ${fdate(o.t)}${o.note?' · '+esc(o.note):''}${o.ref?' · '+esc(o.ref):''}</div>`:'';
   openSheet(`<div class="row between"><div class="sh">${expName(e.cat)}</div>${stB(EXP_ST,e.status)}</div><div class="sm muted">${esc(userName(e.by))} · ${fdate(e.t)}</div>
    <div style="font-size:30px;font-weight:800;margin-top:8px" data-notr>${moneyBase(e.amt)}</div>${e.special?`<span class="badge b-red">${L('特殊费用','Special expense')}</span>`:''}
    <div class="sm" style="margin-top:8px">${esc(e.note)}</div>${e.photo?`<img src="${esc(e.photo)}" style="width:100%;border-radius:14px;margin-top:10px" onclick="viewImg('${esc(e.photo)}')">`:''}
-   <div style="margin-top:8px">${line(L('审批','Approved'),e.ap)}${line(L('入账','Booked'),e.bk)}${line(L('付款','Paid'),e.pd)}${e.rj?`<div class="note-r" style="margin-top:8px">${L('驳回：','Rejected: ')}${esc(e.rj.note||'')} · ${esc(userName(e.rj.by))}</div>`:''}</div>
+   <div style="margin-top:8px">${line(L('运营经理审批','Operations approval'),e.op)}${line(L('总经理审批','GM approval'),e.gm)}${line(L('入账','Booked'),e.bk)}${line(L('付款','Paid'),e.pd)}${e.rj?`<div class="note-r" style="margin-top:8px">${L('驳回：','Rejected: ')}${esc(e.rj.note||'')} · ${esc(userName(e.rj.by))}</div>`:''}</div>
    ${act?`<div class="fld"><label>${act==='pay'?L('付款方式与凭证号','Method & reference'):L('意见（驳回时必填）','Comment (required to reject)')}</label>
     ${act==='pay'?`<div class="chips wrap">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#exN',true)">${pmName(k)}</span>`).join('')}</div>`:''}
     <input class="inp" id="exN" style="background:var(--card);margin-top:${act==='pay'?8:0}px" placeholder="${act==='pay'?refLabel('cash')+L('（必填）',' (required)'):''}"></div>
-    <div class="row gap" style="margin-top:12px">${act!=='pay'?`<button class="bigbtn dark" style="flex:1" onclick="expDo('${id}',false)">${L('驳回','Reject')}</button>`:''}<button class="bigbtn" style="flex:1" onclick="expDo('${id}',true)">${ic('check',18)} ${act==='approve'?L('批准，报备财务','Approve → finance'):act==='book'?L('入账，交出纳付款','Book → cashier'):L('确认已付款','Confirm paid')}</button></div>`:''}
+    <div class="row gap" style="margin-top:12px">${act!=='pay'?`<button class="bigbtn dark" style="flex:1" onclick="expDo('${id}',false)">${L('驳回','Reject')}</button>`:''}<button class="bigbtn" style="flex:1" onclick="expDo('${id}',true)">${ic('check',18)} ${act==='approve'&&e.amt>expLimit()?L('运营通过，提交总经理','Operations OK → GM'):act==='approve'||act==='gm'?L('批准，报备财务','Approve → finance'):act==='book'?L('入账，交出纳付款','Book → cashier'):L('确认已付款','Confirm paid')}</button></div>`:''}
    ${e.by===S.me.id&&e.status==='submitted'?`<button class="bigbtn ghost" style="width:100%;margin-top:10px" onclick="DB.put('exp',{...DB.get('exp','${id}'),status:'void'});closeSheet(true);render(false)">${L('撤回','Withdraw')}</button>`:''}`)}
 function expDo(id,ok){const e=DB.get('exp',id);const act=expAct(e);if(!act)return toast(L('这笔已处理','Already handled'));const n=($('#exN').value||'').trim();const o={by:S.me.id,t:Date.now(),note:n};
   if(!ok){if(n.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('exp',{...e,status:'rejected',rj:o,seen:false})}
-  else if(act==='approve')DB.put('exp',{...e,status:'approved',ap:o});
+  else if(act==='approve')DB.put('exp',{...e,status:e.amt>expLimit()?'gm_pending':'approved',op:o});
+  else if(act==='gm')DB.put('exp',{...e,status:'approved',gm:o});
   else if(act==='book')DB.put('exp',{...e,status:'booked',bk:o,bt:Date.now()});
   else{const m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash';if(n.length<2)return toast(L('请填写','Enter the ')+refLabel(m));DB.put('exp',{...e,status:'paid',pd:{...o,ref:n,method:m}})}
   closeSheet(true);toast(L('已处理','Done'),false);render(false)}
@@ -756,11 +791,12 @@ document.addEventListener('transitionend',e=>{if(e.target.id==='sheet'&&!sheetOn
 
 /* ================= 单据中心 ================= */
 S.docSeg=null;S.docF='all';
-V.docs=()=>{const segs=[];const dv=can('docs_view');if(can('po')||can('po_recv')||dv)segs.push(['po',L('采购','Purchase')]);if(can('so')||can('so_ship')||own('so_fin')||dv)segs.push(['so',L('销售','Sales')]);
+V.docs=()=>{const segs=[['grn',L('入库审核','Receipt approvals')]];const dv=can('docs_view');if(can('po')||can('po_recv')||dv)segs.push(['po',L('采购','Purchase')]);if(can('so')||can('so_ship')||own('so_fin')||dv)segs.push(['so',L('销售','Sales')]);
   if(can('pr')||can('sr')||can('pr_exec')||can('sr_exec'))segs.push(['ret',L('退货','Returns')]);if(can('take')||own('tk_fin')||can('tk_final'))segs.push(['take',L('盘点','Counts')]);
   if(!segs.length)return emptyBox('doc',L('没有可查看的单据','No documents'));if(!segs.some(s=>s[0]===S.docSeg))S.docSeg=(can('so_ship')&&!can('po_recv'))||own('so_fin')?'so':segs[0][0];const seg=S.docSeg;
   let body='',add='';
-  if(seg==='po'){const st=['all','draft','ordered','received','done'];if(!st.includes(S.docF))S.docF='all';
+  if(seg==='grn'){body=grnList();}
+  else if(seg==='po'){const st=['all','draft','ordered','received','done'];if(!st.includes(S.docF))S.docF='all';
     const l=DB.all('po').filter(d=>S.docF==='all'||d.status===S.docF).sort((a,b)=>b.t-a.t);
     add=can('po')?`<button class="pill g" onclick="go('po_new')">${ic('plus',16)} ${L('新建采购单','New PO')}</button>`:can('po_recv')?`<button class="pill g" onclick="go('recv_pick')">${ic('in',16)} ${L('采购入库','Receive')}</button>`:'';
     body=`<div class="chips">${st.map(k=>`<span class="chip ${S.docF===k?'on':''}" onclick="S.docF='${k}';render(false)">${k==='all'?L('全部','All'):L(PO_ST[k][0],PO_ST[k][1])} <span class="n">${k==='all'?DB.all('po').length:DB.all('po').filter(d=>d.status===k).length}</span></span>`).join('')}</div><div style="margin-top:12px">${l.map(d=>docCard('po',d)).join('')||emptyBox('doc',L('暂无采购单','No purchase orders'))}</div>`}
@@ -821,9 +857,9 @@ function steps(flow,cur,M){const i=flow.indexOf(cur);return `<div class="steps">
 V.po_view=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('')+emptyBox('doc',L('单据不存在','Not found'));const feeBox=(d.fees||[]).length?`<div class="box"><h4>${L('附加费用（计入商品到岸成本）','Extra costs (in landed cost)')}</h4>${d.fees.map(f=>`<div class="row between sm" style="margin-top:6px"><span>${esc(feeName(f))}</span><b data-notr>${money(f.amt)}</b></div>`).join('')}<div class="xs muted" style="margin-top:6px">${L('按商品金额比例分摊：每 1 元货款分摊 ','Spread by value: each 1.00 of goods carries ')}${(landK(d)-1).toFixed(3)}</div></div>`:'';
   const grns=DB.all('grn').filter(g=>g.po===d.id);const shs=DB.all('ships').filter(s=>s.ref===d.id);const acts=[];
   if(d.status==='draft'&&can('po')){acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('po_new',{id:'${d.id}'})">${L('编辑','Edit')}</button>`,`<button class="bigbtn" onclick="setSt('po','${d.id}','ordered')">${L('提交下单','Place order')}</button>`)}
-  if(d.status==='ordered'&&can('po_recv'))acts.push(`<button class="bigbtn" onclick="S.form=null;go('recv',{id:'${d.id}'})">${ic('in',18)} ${L('采购入库','Receive')}</button>`);
+  if(d.status==='ordered'&&can('po_prepare'))acts.push(`<button class="bigbtn" onclick="S.form=null;go('recv',{id:'${d.id}'})">${ic('in',18)} ${L('登记到货，提交审批','Register arrival for approval')}</button>`);
   if(d.status==='received'&&can('po'))acts.push(`<button class="bigbtn" onclick="setSt('po','${d.id}','done')">${L('完成订单','Complete')}</button>`);
-  if(['received','done'].includes(d.status)&&can('pr')&&grns.length)acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('pr_new',{grn:'${grns[0].id}'})">${ic('ret',18)} ${L('采购退货','Return')}</button>`);
+  if(['received','done'].includes(d.status)&&can('pr')&&grns.some(g=>grnStatus(g)==='done'))acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('pr_new',{grn:'${grns.find(g=>grnStatus(g)==='done').id}'})">${ic('ret',18)} ${L('采购退货','Return')}</button>`);
   if(d.status==='ordered'&&can('po')&&!acts.length)acts.push(`<button class="bigbtn ghost" onclick="setSt('po','${d.id}','cancel')">${L('取消订单','Cancel order')}</button>`);
   return hdr(L('采购单','Purchase order'),`<button class="icbtn" onclick="copyText('${d.no}')">${ic('copy')}</button>`)+`<div class="pad">
    <div class="box" style="margin-top:6px"><div class="row between"><div class="b" style="font-size:18px" data-notr>${esc(d.no)}</div>${stB(PO_ST,d.status)}</div>${d.status!=='cancel'?steps(['draft','ordered','received','done'],d.status,PO_ST):''}
@@ -832,19 +868,16 @@ V.po_view=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('')+emptyBox('d
     ${nm(d.note)?`<div class="note-y" style="margin-top:12px">${esc(nm(d.note))}</div>`:''}${d._q?`<div class="note-y" style="margin-top:12px">${ic('cloud',15)} ${L('暂存本机，联网后自动提交','Saved on this phone — submits when online')}</div>`:''}</div>
    <div class="box"><h4>${L('商品明细','Items')}<span class="sm muted">${L('已入库 / 订购','Received / ordered')}</span></h4>${d.items.map(it=>{const p=P_(it.pid);return `<div class="li" onclick="go('product',{id:'${it.pid}'})">${thumb(p,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(p.n))}</div><div class="xs muted" data-notr>${n2(it.qty)} × ${n2(it.price)} = ${n2(lineTotal(it))}</div></div><b class="${(+it.recv||0)>=it.qty?'green':''}" data-notr>${n2(+it.recv||0)}/${n2(it.qty)}</b></div>`}).join('')}
     <div class="row between" style="margin-top:10px"><span class="muted">${L('合计','Total')}</span><b style="font-size:18px" data-notr>${money(docTotal(d))}</b></div></div>
-   ${grns.length?`<div class="box"><h4>${L('入库记录','Receipts')}</h4>${grns.map(g=>`<div class="li" style="cursor:default"><div class="qi" style="background:var(--lime);color:var(--green)">${ic('in',18)}</div><div style="flex:1;min-width:0"><div class="b sm" data-notr>${esc(g.no)}</div><div class="xs muted">${fdate(g.t)} · ${esc(userName(g.by))}</div></div><b data-notr>${n2(g.items.reduce((a,i)=>a+i.qty,0))}</b><button class="pill w" style="margin-left:8px" onclick="printDoc('grn','${g.id}')">${ic('print',14)} ${L('入库单','GRN')}</button></div>`).join('')}</div>`:''}
-   ${feeBox}${shipBox(shs,'in','po',d.id)}</div>${acts.length?`<div class="bbar">${acts.join('')}</div>`:''}`};
+   ${grns.length?grnList(grns):''}${feeBox}${shipBox(shs,'in','po',d.id)}</div>${acts.length?`<div class="bbar">${acts.join('')}</div>`:''}`};
 function setSt(k,id,st){const d=DB.get(k,id);DB.put(k,{...d,status:st});toast(L('已更新','Updated'));render(false)}
 function shipBox(shs,dir,refKind,ref){if(!can('logi')&&!shs.length)return '';
   return `<div class="box"><h4>${L('物流跟踪','Logistics')}${can('logi')?`<a class="sm green b" style="cursor:pointer" onclick="S.form=null;go('ship_new',{dir:'${dir}',refKind:'${refKind}',ref:'${ref}'})">+ ${L('添加物流','Add shipment')}</a>`:''}</h4>${shs.map(shipRow).join('')||`<div class="sm muted">${L('还没有物流信息','No shipment yet')}</div>`}</div>`}
 function shipRow(s){const c=carrier(s.carrier);return `<div class="li" onclick="go('ship_view',{id:'${s.id}'})"><div class="qi" style="background:${s.status==='exception'?'#FCE9E5':'var(--lime)'};color:${s.status==='exception'?'var(--red)':'var(--green)'}">${ic(MODES[s.mode||c.mode][2],18)}</div><div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(c))} · <span data-notr>${esc(s.trackNo||s.no)}</span></div><div class="xs muted one">${esc(nm(s.from))} → ${esc(nm(s.to))}</div></div>${stB(SH_ST,s.status)}</div>`}
 
 /* ---------- 采购入库：选订单 → 填数量 → 扫码核对 → 确认入库 ---------- */
-V.recv_pick=()=>{const l=DB.all('po').filter(p=>p.status==='ordered').sort((a,b)=>a.t-b.t);
-  return hdr(L('采购入库','Receive goods'))+`<div class="pad"><div class="note-g" style="margin-top:4px">${L('第 1 步：选择要入库的采购订单','Step 1: choose the purchase order to receive')}</div><div style="margin-top:12px">${l.map(d=>`<div class="wc" onclick="S.form=null;go('recv',{id:'${d.id}'})"><div class="top"><div class="row between"><h3><span class="tt" data-notr>${esc(d.no)}</span></h3>${stB(PO_ST,d.status)}</div><small>${esc(ptName(d.sup))} · ${esc(whName(d.wh))}</small>
-   <div class="cols"><div><span class="l">${L('商品','Items')}</span><span class="v">${d.items.length}</span></div><div><span class="l">${L('未入库','Remaining')}</span><span class="v" data-notr>${n2(d.items.reduce((a,i)=>a+Math.max(0,i.qty-(+i.recv||0)),0))}</span></div><div><span class="l">${L('下单','Ordered')}</span><span class="v">${fdate(d.t,false)}</span></div></div></div></div>`).join('')||emptyBox('in',L('没有待入库的采购单','No orders waiting to be received'))}</div></div>`};
+V.recv_pick=()=>hdr(L('采购到货与入库','Arrivals & receipts'))+`<div class="pad">${grnList(DB.all('grn').filter(g=>g.status&&g.status!=='done'))}${can('po_prepare')?DB.all('po').filter(d=>d.status==='ordered').map(d=>`<div class="wc" onclick="S.form=null;go('recv',{id:'${d.id}'})"><div class="top"><b data-notr>${esc(d.no)}</b><div>${L('登记到货，提交审批','Register arrival for approval')}</div></div></div>`).join(''):''}</div>`;
 V.recv=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('');
-  if(!S.form||S.form.kind!=='recv'||S.form.po!==d.id)S.form={kind:'recv',po:d.id,wh:d.wh,chk:{},lines:d.items.map(it=>{const p=P_(it.pid);const rem=Math.max(0,it.qty-(+it.recv||0));return {pid:it.pid,qty:rem,rem,batch:p.batch?'B'+fday(Date.now()).replace(/-/g,'').slice(2):'',exp:''}})};
+  if(!S.form||S.form.kind!=='recv'||S.form.po!==d.id)S.form={kind:'recv',po:d.id,wh:d.wh,chk:{},lines:d.items.map(it=>{const p=P_(it.pid);const rem=grnRemaining(d,it.pid);return {pid:it.pid,qty:rem,rem,batch:genNo('B'),exp:''}})};
   const F=S.form;const total=F.lines.length,ok=F.lines.filter(l=>(F.chk[l.pid]||0)>0).length;
   return hdr(L('确认入库','Receive')+' · <span data-notr>'+esc(d.no)+'</span>')+`<div class="pad">
    <div class="note-g" style="margin-top:4px">${L('第 2 步：核对实到数量（默认为未入库数量），可扫码逐件核对','Step 2: check quantities (defaults to remaining). Scan items to verify.')}</div>
@@ -852,21 +885,30 @@ V.recv=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('');
    <div class="fld"><label>${L('入库仓库','Warehouse')}</label>${whSel(F.wh,"S.form.wh=this.value")}</div>
    ${F.lines.map((l,i)=>{const p=P_(l.pid);const c=F.chk[l.pid]||0;return `<div class="box" style="margin-top:10px;padding:12px 14px;${c?'border:2px solid var(--green)':''}"><div class="row gap">${thumb(p,40)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(p.n))}</div><div class="xs muted"><span data-notr>${esc(p.bar)}</span> · ${L('未入库','Remaining')} ${n2(l.rem)} ${esc(unit(p))}</div></div>${c?`<span class="badge b-green">✓ ${c}</span>`:''}</div>
     <div class="row between" style="margin-top:10px"><span class="sm muted">${L('实到数量','Received qty')}</span><div class="qty"><button onclick="S.form.lines[${i}].qty=Math.max(0,S.form.lines[${i}].qty-1);render(false)">−</button><input type="number" inputmode="decimal" value="${l.qty}" oninput="S.form.lines[${i}].qty=+this.value"><button onclick="S.form.lines[${i}].qty++;render(false)">+</button></div></div>
-    ${p.batch?`<div class="row gap" style="margin-top:8px"><input class="inp" style="padding:9px 12px;font-size:14px" placeholder="${L('批次号','Batch no.')}" value="${esc(l.batch)}" oninput="S.form.lines[${i}].batch=this.value"><input class="inp" style="padding:9px 12px;font-size:14px" type="date" value="${esc(l.exp)}" oninput="S.form.lines[${i}].exp=this.value" title="${L('有效期','Expiry')}"></div>`:''}</div>`}).join('')}</div>
-  <div class="bbar"><button class="bigbtn" onclick="doRecv()">${ic('check',18)} ${L('确认入库','Confirm receipt')}</button></div>`};
+    ${true?`<div class="row gap" style="margin-top:8px"><input class="inp" style="padding:9px 12px;font-size:14px" placeholder="${L('批次号','Batch no.')}" value="${esc(l.batch)}" oninput="S.form.lines[${i}].batch=this.value"><input class="inp" style="padding:9px 12px;font-size:14px" type="date" value="${esc(l.exp)}" oninput="S.form.lines[${i}].exp=this.value" title="${L('有效期','Expiry')}"></div>`:''}</div>`}).join('')}</div>
+  <div class="bbar"><button class="bigbtn" onclick="doRecv()">${ic('check',18)} ${L('提交财务审批','Submit to finance')}</button></div>`};
 function recvScan(){openScan(L('扫码核对','Scan check'),c=>{const F=S.form;const p=findByCode(c);const l=p&&F.lines.find(x=>x.pid===p.id);
   if(!l){toast(L('不在此订单中：','Not in this order: ')+c);const g=$('#scLog');if(g)g.innerHTML=`<div class="note-r" style="margin-top:8px">${L('不在此订单中','Not in this order')}: <span data-notr>${esc(c)}</span></div>`;return false}
   F.chk[p.id]=(F.chk[p.id]||0)+1;S.formDirty=true;const g=$('#scLog');if(g)g.innerHTML=`<div class="note-g" style="margin-top:8px">✓ ${esc(nm(p.n))} · ${L('已核对','checked')} ${F.chk[p.id]} ${L('次','x')}</div>`},true)}
-function doRecv(){const F=S.form;const d=DB.get('po',F.po);const lines=F.lines.filter(l=>+l.qty>0);if(!lines.length)return toast(L('请填写实到数量','Enter received quantities'));
-  for(const l of lines){if(P_(l.pid).batch&&!l.exp)return toast(L('请填写有效期：','Enter expiry for: ')+pName(l.pid))}
-  const over=lines.find(l=>+l.qty>l.rem);
-  const go2=()=>{const g=DB.put('grn',{no:genNo('GR'),po:d.id,wh:F.wh,t:Date.now(),items:lines.map(l=>({pid:l.pid,qty:+l.qty,batch:l.batch||'',exp:l.exp||''}))});
-    const k=landK(d);lines.forEach(l=>{const it=d.items.find(x=>x.pid===l.pid)||{};addMove({pid:l.pid,wh:F.wh,qty:+l.qty,type:'po_in',ref:g.id,batch:l.batch||'',exp:l.exp||'',uc:Math.round((+it.price||0)*k*100)/100})});
-    const items=d.items.map(it=>{const l=lines.find(x=>x.pid===it.pid);return l?{...it,recv:(+it.recv||0)+(+l.qty)}:it});
-    const all=items.every(it=>(+it.recv||0)>=it.qty);DB.put('po',{...d,items,status:all?'received':'ordered'});S.form=null;Alerts.low(false);
-    closeSheet(true);toast(all?L('已全部入库','Fully received'):L('已部分入库','Partly received'));finish('po_view',{id:d.id})};
-  if(over)openSheet(`<div class="sh">${L('超出订购数量','More than ordered')}</div><div class="sm muted" style="margin-top:6px">${esc(pName(over.pid))}: ${L('实到','received')} ${over.qty} &gt; ${L('未入库','remaining')} ${over.rem}</div><div class="row gap" style="margin-top:18px"><button class="bigbtn ghost" onclick="closeSheet()">${L('返回修改','Go back')}</button><button class="bigbtn" onclick="window._rcv()">${L('仍然入库','Receive anyway')}</button></div>`);
-  window._rcv=go2;if(!over)go2()}
+function doRecv(){const F=S.form,d=F&&DB.get('po',F.po);if(!can('po_prepare')||!d||d.status!=='ordered')return;
+  const lines=F.lines.filter(l=>+l.qty>0);if(!lines.length)return toast(L('请填写实到数量','Enter received quantities'));
+  for(const l of lines){if(!Number.isFinite(+l.qty)||+l.qty>grnRemaining(d,l.pid))return toast(L('数量超过未入库且未申请的数量','Quantity exceeds remaining unrequested amount'));if(P_(l.pid).batch&&!l.exp)return toast(L('请填写有效期：','Enter expiry for: ')+pName(l.pid))}
+  const batch=genNo('B');const g=DB.put('grn',{no:genNo('GR'),batch,po:d.id,wh:F.wh,status:'submitted',t:Date.now(),items:lines.map(l=>({pid:l.pid,qty:+l.qty,batch:(l.batch||batch).trim(),exp:l.exp||''}))});
+  S.form=null;toast(L('已提交：财务审批 → 内勤确认 → 库管入库','Submitted: finance → clerk → warehouse'),false);finish('grn_view',{id:g.id})}
+const grnStatus=g=>g.status||'done';
+const grnCanAct=g=>g.status==='submitted'&&own('grn_fin')||g.status==='fin_ok'&&own('grn_check')||g.status==='ready'&&own('po_recv');
+function grnRemaining(d,pid){const it=d.items.find(i=>i.pid===pid);const pending=DB.all('grn').filter(g=>g.po===d.id&&['submitted','fin_ok','ready'].includes(g.status)).reduce((n,g)=>n+g.items.filter(i=>i.pid===pid).reduce((v,i)=>v+(+i.qty||0),0),0);return Math.max(0,(+it.qty||0)-(+it.recv||0)-pending)}
+function grnList(rows=DB.all('grn')){return `<div class="box"><h4>${L('入库信息 / 审批','Receipt information / review')}</h4>${rows.slice().sort((a,b)=>b.t-a.t).map(g=>`<div class="li" onclick="go('grn_view',{id:'${g.id}'})"><div style="flex:1"><b data-notr>${esc(g.no)}</b><div class="xs muted">${L('入库批号','Receipt batch')}: <span data-notr>${esc(g.batch||g.no)}</span> · ${esc(whName(g.wh))}</div></div>${stB(GR_ST,grnStatus(g))}</div>`).join('')||L('暂无入库信息','No receipts')}</div>`}
+V.grns=()=>hdr(L('入库信息 / 审批','Receipt information / review'))+`<div class="pad">${grnList()}</div>`;
+V.grn_view=()=>{const g=DB.get('grn',S.params.id);if(!g)return hdr('');const d=DB.get('po',g.po)||{};return hdr(L('采购入库单','Goods receipt'))+`<div class="pad"><div class="box"><b data-notr>${esc(g.no)}</b> ${stB(GR_ST,grnStatus(g))}<div class="sm">${L('入库批号','Receipt batch')}: <span data-notr>${esc(g.batch||g.no)}</span></div><div class="sm">${esc(d.no)} · ${esc(ptName(d.sup))} · ${esc(whName(g.wh))}</div><div class="note-y">${L('财务审批 → 内勤审核确认 → 库管入库；最后一步才增加库存','Finance → clerk → warehouse; stock changes only at the last step')}</div>${g.items.map(i=>`<div class="li"><span style="flex:1">${esc(pName(i.pid))}<div class="xs muted" data-notr>${esc(i.batch||g.batch||g.no)} ${esc(i.exp||'')}</div></span><b>${n2(i.qty)}</b></div>`).join('')}${['fin','check','received','reject'].filter(k=>g[k]).map(k=>`<div class="xs muted">${esc(userName(g[k].by))} · ${fdate(g[k].t)} · ${esc(g[k].note||'')}</div>`).join('')}</div></div>${grnCanAct(g)?`<div class="bbar">${g.status!=='ready'?`<button class="bigbtn ghost" onclick="grnReview('${g.id}',false)">${L('拒绝','Reject')}</button>`:''}<button class="bigbtn" onclick="grnReview('${g.id}',true)">${g.status==='submitted'?L('财务审批通过','Finance approve'):g.status==='fin_ok'?L('内勤审核确认','Clerk confirm'):L('确认入库','Receive into stock')}</button></div>`:''}`};
+function grnReview(id,ok){const g=DB.get('grn',id);if(!g||!grnCanAct(g))return;if(!ok){openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="grR"><button class="bigbtn" onclick="grnReject('${id}')">${L('确认驳回','Reject')}</button>`);return}
+  const t=Date.now();if(g.status==='submitted')DB.put('grn',{...g,status:'fin_ok',fin:{by:S.me.id,t,note:L('财务审批通过','Finance approved')}});
+  else if(g.status==='fin_ok')DB.put('grn',{...g,status:'ready',check:{by:S.me.id,t,note:L('内勤审核确认','Clerk confirmed')}});
+  else{const d=DB.get('po',g.po);if(!d||d.status!=='ordered')return toast(L('采购单状态已变更，请同步后重试','PO changed; sync and retry'));if(g.items.some(l=>{const i=d.items.find(x=>x.pid===l.pid);return !i||(+i.recv||0)+l.qty>i.qty}))return toast(L('入库数量超出采购数量','Receipt exceeds ordered quantity'));
+    const k=landK(d);g.items.forEach((l,i)=>{const it=d.items.find(x=>x.pid===l.pid);addMove({id:'grn_'+g.id+'_'+i,pid:l.pid,wh:g.wh,qty:l.qty,type:'po_in',ref:g.id,batch:l.batch||g.batch||g.no,exp:l.exp||'',uc:Math.round((+it.price||0)*k*100)/100})});
+    const items=d.items.map(it=>({...it,recv:(+it.recv||0)+g.items.filter(l=>l.pid===it.pid).reduce((n,l)=>n+l.qty,0)}));DB.put('po',{...d,items,status:items.every(i=>i.recv>=i.qty)?'received':'ordered'});DB.put('grn',{...g,status:'done',received:{by:S.me.id,t,note:L('库管确认入库','Warehouse received')}})}
+  toast(L('已处理','Processed'),false);render(false)}
+function grnReject(id){const g=DB.get('grn',id),note=($('#grR').value||'').trim();if(!g||!grnCanAct(g)||g.status==='ready')return;if(note.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('grn',{...g,status:'rejected',reject:{by:S.me.id,t:Date.now(),note}});closeSheet(true);render(false)}
 
 /* ---------- 退货：采购主管 / 销售经理提交退货单 → 仓库主管确认出库 / 收货后才改库存（各司其职） ---------- */
 const RT_ST={pending:['待仓库处理','Waiting for warehouse','b-gold'],done:['已完成','Completed','b-green'],cancel:['已取消','Cancelled','b-grey']};
@@ -888,7 +930,7 @@ function retExec(k,id){const d=DB.get(k,id);if(!d||d.status!=='pending')return;
   DB.put(k,{...d,status:'done',xby:S.me.id,xt:Date.now()});Alerts.low(false);closeSheet(true);toast(k==='pr'?L('已退货出库','Shipped out to supplier'):L('已收货，库存已恢复','Received — stock restored'),false);render(false)}
 /* 已提交未处理的退货数量也要扣掉，避免重复退 */
 const pendRet=(k,ref,i)=>DB.all(k).filter(r=>(r.status||'done')==='pending'&&(k==='pr'?r.grn:r.so)===ref).reduce((a,r)=>a+r.items.filter(x=>x.i===i).reduce((b,x)=>b+x.qty,0),0);
-V.pr_new=()=>{const gid=S.params.grn;if(!gid){const l=DB.all('grn').sort((a,b)=>b.t-a.t);return hdr(L('采购退货','Return to supplier'))+`<div class="pad"><div class="note-g" style="margin-top:4px">${L('选择要退货的入库单','Choose the receipt to return from')}</div><div style="margin-top:12px">${l.map(g=>{const po=DB.get('po',g.po)||{};return `<div class="wc" onclick="S.form=null;S.params.grn='${g.id}';render(true)"><div class="top"><div class="row between"><h3><span class="tt" data-notr>${esc(g.no)}</span></h3><span class="badge b-green">${L('已入库','Received')}</span></div><small class="one" style="display:block">${esc(ptName(po.sup))} · <span data-notr>${esc(po.no||'')}</span></small><div class="cols"><div><span class="l">${L('商品','Items')}</span><span class="v">${g.items.length}</span></div><div><span class="l">${L('门店','Store')}</span><span class="v">${esc(whName(g.wh))}</span></div><div><span class="l">${L('日期','Date')}</span><span class="v">${fdate(g.t,false)}</span></div></div></div></div>`}).join('')||emptyBox('in',L('暂无入库单','No receipts'))}</div></div>`}
+V.pr_new=()=>{const gid=S.params.grn;if(!gid){const l=DB.all('grn').filter(g=>grnStatus(g)==='done').sort((a,b)=>b.t-a.t);return hdr(L('采购退货','Return to supplier'))+`<div class="pad"><div class="note-g" style="margin-top:4px">${L('选择要退货的入库单','Choose the receipt to return from')}</div><div style="margin-top:12px">${l.map(g=>{const po=DB.get('po',g.po)||{};return `<div class="wc" onclick="S.form=null;S.params.grn='${g.id}';render(true)"><div class="top"><div class="row between"><h3><span class="tt" data-notr>${esc(g.no)}</span></h3><span class="badge b-green">${L('已入库','Received')}</span></div><small class="one" style="display:block">${esc(ptName(po.sup))} · <span data-notr>${esc(po.no||'')}</span></small><div class="cols"><div><span class="l">${L('商品','Items')}</span><span class="v">${g.items.length}</span></div><div><span class="l">${L('门店','Store')}</span><span class="v">${esc(whName(g.wh))}</span></div><div><span class="l">${L('日期','Date')}</span><span class="v">${fdate(g.t,false)}</span></div></div></div></div>`}).join('')||emptyBox('in',L('暂无入库单','No receipts'))}</div></div>`}
   const g=DB.get('grn',gid);const po=DB.get('po',g.po)||{};
   if(!S.form||S.form.kind!=='pr'||S.form.grn!==gid)S.form={kind:'pr',grn:gid,reason:'',lines:g.items.map((it,i)=>({i,pid:it.pid,batch:it.batch,max:Math.max(0,it.qty-(+it.ret||0)-pendRet('pr',gid,i)),qty:0}))};
   const F=S.form;
@@ -898,7 +940,7 @@ V.pr_new=()=>{const gid=S.params.grn;if(!gid){const l=DB.all('grn').sort((a,b)=>
     <div class="qty"><button onclick="S.form.lines[${k}].qty=Math.max(0,S.form.lines[${k}].qty-1);render(false)">−</button><input type="number" value="${l.qty}" oninput="S.form.lines[${k}].qty=+this.value"><button onclick="S.form.lines[${k}].qty=Math.min(${l.max},S.form.lines[${k}].qty+1);render(false)">+</button></div></div></div>`}).join('')}
    <div class="fld"><label>${L('退货原因','Reason')}</label><input class="inp" value="${esc(F.reason)}" oninput="S.form.reason=this.value" placeholder="${L('如：质量问题、型号不符','e.g. quality issue, wrong model')}"></div></div>
   <div class="bbar"><button class="bigbtn" onclick="doPR()">${L('提交退货单','Submit return')}</button></div>`};
-function doPR(){const F=S.form;const g=DB.get('grn',F.grn);const lines=F.lines.filter(l=>+l.qty>0);if(!lines.length)return toast(L('请填写退货数量','Enter return quantities'));
+function doPR(){const F=S.form;const g=DB.get('grn',F.grn);if(!g||grnStatus(g)!=='done'||!can('pr'))return;const lines=F.lines.filter(l=>+l.qty>0);if(!lines.length)return toast(L('请填写退货数量','Enter return quantities'));
   const bad=lines.find(l=>+l.qty>l.max);if(bad)return toast(L('超过可退数量：','Exceeds max: ')+pName(bad.pid));
   DB.put('pr',{no:genNo('PR'),grn:g.id,wh:g.wh,t:Date.now(),reason:F.reason,status:'pending',items:lines.map(l=>({i:l.i,pid:l.pid,qty:+l.qty,batch:l.batch||''}))});S.form=null;
   toast(L('已提交，等待仓库出库','Submitted — waiting for the warehouse'),false);finish('po_view',{id:g.po})}
@@ -976,7 +1018,7 @@ function soFin(id){const d=DB.get('so',id);if(!own('so_fin')||d.status!=='submit
     <div class="chips wrap" style="margin-top:10px">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#sfR',true)">${pmName(k)}</span>`).join('')}</div>
     <input class="inp" id="sfR" style="margin-top:10px;background:var(--card)" placeholder="${refLabel('cash')}${L('（必填）',' (required)')}">
     <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soFinOk('${id}')">${ic('check',18)} ${L('已收款，放行','Paid — release')}</button></div>`}`)}
-function soFinOk(id){const d=DB.get('so',id);if(d.status!=='submitted')return toast(L('这张单已处理','Already handled'));
+function soFinOk(id){const d=DB.get('so',id);if(!own('so_fin')||!d)return;if(d.status!=='submitted')return toast(L('这张单已处理','Already handled'));
   if(d.pay==='credit'){DB.put('so',{...d,status:'credit_gm',fin:{by:S.me.id,t:Date.now(),note:($('#sfN').value||'').trim()}});closeSheet(true);toast(L('已审核，交总经理审批','Sent to the GM'),false);return render(false)}
   const x0=arOf(d);if(x0.bal<=0.005){x0.fs.filter(f=>f.status==='recorded').forEach(f=>DB.put('fin',{...f,status:'verified',vby:S.me.id,vt:Date.now()}));
     DB.put('so',{...d,status:'approved',fin:{by:S.me.id,t:Date.now(),note:L('已核对全额收款 ','verified full payment ')+money(x0.got)}});closeSheet(true);toast(L('已核对，仓库可以出库了','Verified — the warehouse can ship'),false);return render(false)}
@@ -989,11 +1031,11 @@ function soGm(id){const d=DB.get('so',id);if(S.me.role!=='gm'||d.status!=='credi
   openSheet(`<div class="sh">${L('审批赊账','Approve credit')}</div>${soHead(d)}${d.fin?`<div class="note-g" style="margin-top:10px">${L('财务意见：','Finance: ')}${esc(userName(d.fin.by))} · ${esc(d.fin.note||L('同意','approved'))}</div>`:''}
    <div class="fld"><label>${L('审批意见','Comment')}</label><input class="inp" id="sgN" style="background:var(--card)"></div>
    <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soGmOk('${id}')">${ic('check',18)} ${L('批准赊账','Approve')}</button></div>`)}
-function soGmOk(id){const d=DB.get('so',id);if(d.status!=='credit_gm')return;DB.put('so',{...d,status:'approved',gmok:{by:S.me.id,t:Date.now(),note:($('#sgN').value||'').trim()}});closeSheet(true);toast(L('已批准，仓库可以出库了','Approved — the warehouse can ship'),false);render(false)}
-function soReject(id){openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="srR" style="margin-top:10px;background:var(--card)" placeholder="${L('如：客户欠款过多，请先收款','e.g. too much owed — collect first')}">
+function soGmOk(id){const d=DB.get('so',id);if(!S.me||S.me.role!=='gm'||!d)return;if(d.status!=='credit_gm')return;DB.put('so',{...d,status:'approved',gmok:{by:S.me.id,t:Date.now(),note:($('#sgN').value||'').trim()}});closeSheet(true);toast(L('已批准，仓库可以出库了','Approved — the warehouse can ship'),false);render(false)}
+function soReject(id){const d=DB.get('so',id);if(!d||!(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&S.me.role==='gm'))return;openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="srR" style="margin-top:10px;background:var(--card)" placeholder="${L('如：客户欠款过多，请先收款','e.g. too much owed — collect first')}">
   <button class="bigbtn" style="width:100%;margin-top:14px;background:var(--red);color:#fff" onclick="const r=$('#srR').value.trim();if(r.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('so',{...DB.get('so','${id}'),status:'rejected',rj:r,rjBy:S.me.id});closeSheet(true);toast(L('已驳回，业务员会收到通知','Rejected — sales has been notified'));render(false)">${L('确认驳回','Reject')}</button>`)}
 /* 销售出库：确认发货 → 按先到期先出扣减库存，可同时登记物流 */
-function shipSheet(id){const d=DB.get('so',id);const chk=d.items.map(it=>({it,av:qtyOf(it.pid,d.wh)}));const short=chk.filter(x=>x.av<x.it.qty);
+function shipSheet(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved')return;const chk=d.items.map(it=>({it,av:qtyOf(it.pid,d.wh)}));const short=chk.filter(x=>x.av<x.it.qty);
   openSheet(`<div class="sh">${L('确认发货','Confirm shipment')}</div><div class="sm muted" data-notr>${esc(d.no)} · ${esc(ptName(d.cus))}</div>
    <div style="margin-top:10px">${chk.map(x=>`<div class="li" style="cursor:default"><div style="flex:1;min-width:0"><div class="b sm one">${esc(pName(x.it.pid))}</div><div class="xs ${x.av<x.it.qty?'red b':'muted'}">${L('库存','Stock')} ${n2(x.av)}</div></div><b data-notr>-${n2(x.it.qty)}</b></div>`).join('')}</div>
    ${short.length?`<div class="note-r" style="margin-top:10px">${L('库存不足，无法发货。请先调拨或修改数量。','Not enough stock to ship. Transfer stock or change quantities.')}</div>`:`
@@ -1001,7 +1043,7 @@ function shipSheet(id){const d=DB.get('so',id);const chk=d.items.map(it=>({it,av
    <div id="shF"><div class="row gap" style="margin-top:10px"><select class="inp" id="shC">${CARRIERS.map(c=>`<option value="${c.id}">${esc(nm(c))}</option>`).join('')}</select><input class="inp" id="shT" placeholder="${L('运单号 / 车牌','Tracking no. / plate')}"></div>
    <input class="inp" id="shD" style="margin-top:8px" placeholder="${L('司机 / 联系电话（可选）','Driver / phone (optional)')}"></div>
    <button class="bigbtn" style="width:100%;margin-top:16px" onclick="doShip('${id}')">${ic('check',18)} ${L('确认出库，扣减库存','Ship & deduct stock')}</button>`}`)}
-function doShip(id){const d=DB.get('so',id);const plan=[];for(const it of d.items){const a=allocate(it.pid,d.wh,+it.qty);if(!a)return toast(L('库存不足：','Not enough stock: ')+pName(it.pid));plan.push([it,a])}
+function doShip(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved')return;const plan=[];for(const it of d.items){const a=allocate(it.pid,d.wh,+it.qty);if(!a)return toast(L('库存不足：','Not enough stock: ')+pName(it.pid));plan.push([it,a])}
   plan.forEach(([it,a])=>a.forEach(b=>addMove({pid:it.pid,wh:d.wh,qty:-b.qty,type:'so_out',ref:d.id,batch:b.batch||'',exp:b.exp||''})));
   DB.put('so',{...d,status:'shipped',st:Date.now(),items:d.items.map(i=>({...i,shipped:i.qty}))});
   const on=$('#shF')&&$('#shF').style.display!=='none';if(on){const c=$('#shC').value;DB.put('ships',{no:genNo('SH'),dir:'out',ref:d.id,refKind:'so',carrier:c,mode:carrier(c).mode,trackNo:$('#shT').value.trim(),driver:$('#shD').value.trim(),
@@ -1049,20 +1091,20 @@ const PM={cash:['现金','Cash','cash'],bank:['银行转账','Bank','wh'],momo:[
 const refLabel=m=>m==='cash'?L('收据号','Receipt no.'):m==='momo'?L('手机钱包交易号','Mobile money transaction ID'):L('银行流水号','Bank reference');
 function pmPick(el,inp,req){el.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');const i=$(inp);if(i)i.placeholder=refLabel(el.dataset.m)+(req?L('（必填）',' (required)'):L('（可选）',' (optional)'))}
 const pmName=k=>L((PM[k]||PM.cash)[0],(PM[k]||PM.cash)[1]);
-const FN_ST={recorded:['待核对','To verify','b-gold'],verified:['已核对','Verified','b-green'],req:['待总经理审批','Awaiting GM','b-gold'],rejected:['总经理驳回','Rejected by GM','b-red'],approved:['已批准待付','Approved, to pay','b-blue'],paid:['已付款','Paid','b-green'],void:['已作废','Void','b-grey']};
+const FN_ST={recorded:['待核对','To verify','b-gold'],verified:['已核对','Verified','b-green'],gm_pending:['待总经理审批','Awaiting GM','b-gold'],req:['待运营经理审批','Awaiting operations','b-gold'],rejected:['审批驳回','Rejected','b-red'],approved:['已批准待付','Approved, to pay','b-blue'],paid:['已付款','Paid','b-green'],void:['已作废','Void','b-grey']};
 const soNet=s=>docTotal(s)-(s.items||[]).reduce((a,i)=>a+(+i.ret||0)*(+i.price||0),0);
 const poNet=p=>{const grs=DB.all('grn').filter(g=>g.po===p.id).map(g=>g.id);const ret=DB.all('pr').filter(r=>grs.includes(r.grn)&&(r.status||'done')==='done').reduce((a,r)=>a+r.items.reduce((b,i)=>{const it=p.items.find(x=>x.pid===i.pid)||{};return b+i.qty*(+it.price||0)},0),0);return docTotal(p)-ret};
 function arOf(s){const fs=DB.all('fin').filter(f=>f.type==='rcv'&&f.ref===s.id&&f.status!=='void');const got=fs.reduce((a,f)=>a+(+f.amount||0),0);const tot=soNet(s);return {tot,got,bal:Math.max(0,tot-got),fs}}
 function apOf(p){const fs=DB.all('fin').filter(f=>f.type==='pay'&&f.ref===p.id&&f.status!=='void');const paid=fs.filter(f=>f.status==='paid').reduce((a,f)=>a+(+f.amount||0),0);
-  const sum=st=>fs.filter(f=>f.status===st).reduce((a,f)=>a+(+f.amount||0),0);const appr=sum('approved'),req=sum('req'),tot=poNet(p);
+  const sum=st=>fs.filter(f=>f.status===st).reduce((a,f)=>a+(+f.amount||0),0);const appr=sum('approved'),req=sum('req')+sum('gm_pending'),tot=poNet(p);
   return {tot,paid,appr,req,bal:Math.max(0,tot-paid),free:Math.max(0,tot-paid-appr-req),fs}}
 const arDocs=()=>DB.all('so').filter(s=>['submitted','credit_gm','approved','shipped','done'].includes(s.status));
 const apDocs=()=>DB.all('po').filter(p=>['ordered','received','done'].includes(p.status));
 function finSum(){const t0=dayStart(),m0=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const fin=DB.all('fin').filter(f=>f.status!=='void');
   const rc=fin.filter(f=>f.type==='rcv'),pd=fin.filter(f=>f.type==='pay'&&f.status==='paid');
-  return {arBal:arDocs().reduce((a,s)=>a+arOf(s).bal,0),apBal:apDocs().reduce((a,p)=>a+apOf(p).bal,0),unverN:rc.filter(f=>f.status==='recorded').length,apprN:fin.filter(f=>f.type==='pay'&&f.status==='approved').length,reqN:fin.filter(f=>f.type==='pay'&&f.status==='req').length,rejN:fin.filter(f=>f.type==='pay'&&f.status==='rejected').length,
+  return {arBal:arDocs().reduce((a,s)=>a+arOf(s).bal,0),apBal:apDocs().reduce((a,p)=>a+apOf(p).bal,0),unverN:rc.filter(f=>f.status==='recorded').length,apprN:fin.filter(f=>f.type==='pay'&&f.status==='approved').length,reqN:fin.filter(f=>payCanReview(f)).length,rejN:fin.filter(f=>f.type==='pay'&&f.status==='rejected').length,
     rcvToday:rc.filter(f=>f.t>=t0).reduce((a,f)=>a+f.amount,0),payMonth:pd.filter(f=>(f.pt||f.t)>=m0).reduce((a,f)=>a+f.amount,0),cash:rc.reduce((a,f)=>a+f.amount,0)-pd.reduce((a,f)=>a+f.amount,0)}}
-function finTodo(){if(!S.me||!can('fin'))return 0;const F=finSum();return (can('fin_verify')&&S.me.role!=='gm'?F.unverN:0)+(can('fin_pay')&&S.me.role!=='gm'?F.apprN:0)+(S.me.role==='gm'?F.reqN:0)+(S.me.role==='acct'?F.rejN:0)}
+function finTodo(){if(!S.me||!can('fin'))return 0;const F=finSum();return (can('fin_verify')&&S.me.role!=='gm'?F.unverN:0)+(can('fin_pay')&&S.me.role!=='gm'?F.apprN:0)+(['gm','ops'].includes(S.me.role)?F.reqN:0)+(S.me.role==='acct'?F.rejN:0)}
 S.finSeg='ar';S.finF='open';
 V.fin=()=>{if(S.params&&S.params.seg){S.finSeg=S.params.seg;S.params={}}const seg=S.finSeg||'ar';const F=finSum();let body='';
   if(seg==='ar'){const l=arDocs().map(s=>({s,x:arOf(s)})).filter(o=>S.finF==='all'||o.x.bal>0.005).sort((a,b)=>b.s.t-a.s.t).slice(0,120);
@@ -1071,8 +1113,8 @@ V.fin=()=>{if(S.params&&S.params.seg){S.finSeg=S.params.seg;S.params={}}const se
       <small>${esc(ptName(s.cus))} · ${L(SO_ST[s.status][0],SO_ST[s.status][1])}</small>
       <div class="cols"><div><span class="l">${L('应收','Due')}</span><span class="v" data-notr>${numK(x.tot)}</span></div><div><span class="l">${L('已收','Received')}</span><span class="v" data-notr>${numK(x.got)}</span></div><div><span class="l">${L('余额','Balance')}</span><span class="v ${x.bal>0?'red':''}" data-notr>${numK(x.bal)}</span></div></div></div></div>`).join('')||emptyBox('calc',L('没有未收清的销售单','Nothing outstanding'))}</div>`}
   else if(seg==='ap'){const l=apDocs().map(p=>({p,x:apOf(p)})).filter(o=>S.finF==='all'||o.x.bal>0.005).sort((a,b)=>(b.x.req+b.x.appr>0)-(a.x.req+a.x.appr>0)||b.p.t-a.p.t);
-    body=(S.me.role==='gm'&&F.reqN?`<div class="note-y" style="margin-bottom:12px;cursor:pointer" onclick="payReview()">${ic('calc',16)} ${L(`${F.reqN} 笔付款申请待您审批，点此审批`,`${F.reqN} payment request(s) to review — tap here`)}</div>`:'')+`<div class="chips">${[['open',L('未付清','Outstanding')],['all',L('全部','All')]].map(([k,t])=>`<span class="chip ${S.finF===k?'on':''}" onclick="S.finF='${k}';render(false)">${t}</span>`).join('')}</div>
-     <div style="margin-top:12px">${l.map(({p,x})=>`<div class="wc" onclick="apSheet('${p.id}')"><div class="top"><div class="row between" style="gap:8px"><h3><span class="tt" data-notr>${esc(p.no)}</span></h3>${x.req>0?`<span class="badge b-gold">${L('待总经理审批','Awaiting GM')}</span>`:x.appr>0?`<span class="badge b-blue">${L('已批准待付','Approved')}</span>`:x.bal<=0.005?`<span class="badge b-green">${L('已付清','Paid')}</span>`:`<span class="badge b-red">${L('未付款','Unpaid')}</span>`}</div>
+    body=(['gm','ops'].includes(S.me.role)&&F.reqN?`<div class="note-y" style="margin-bottom:12px;cursor:pointer" onclick="payReview()">${ic('calc',16)} ${L(`${F.reqN} 笔付款申请待您审批，点此审批`,`${F.reqN} payment request(s) to review — tap here`)}</div>`:'')+`<div class="chips">${[['open',L('未付清','Outstanding')],['all',L('全部','All')]].map(([k,t])=>`<span class="chip ${S.finF===k?'on':''}" onclick="S.finF='${k}';render(false)">${t}</span>`).join('')}</div>
+     <div style="margin-top:12px">${l.map(({p,x})=>`<div class="wc" onclick="apSheet('${p.id}')"><div class="top"><div class="row between" style="gap:8px"><h3><span class="tt" data-notr>${esc(p.no)}</span></h3>${x.req>0?`<span class="badge b-gold">${L('待运营 / 总经理审批','Awaiting operations / GM')}</span>`:x.appr>0?`<span class="badge b-blue">${L('已批准待付','Approved')}</span>`:x.bal<=0.005?`<span class="badge b-green">${L('已付清','Paid')}</span>`:`<span class="badge b-red">${L('未付款','Unpaid')}</span>`}</div>
       <small>${esc(ptName(p.sup))} · ${L(PO_ST[p.status][0],PO_ST[p.status][1])}</small>
       <div class="cols"><div><span class="l">${L('应付','Due')}</span><span class="v" data-notr>${numK(x.tot)}</span></div><div><span class="l">${L('已付','Paid')}</span><span class="v" data-notr>${numK(x.paid)}</span></div><div><span class="l">${L('余额','Balance')}</span><span class="v ${x.bal>0?'red':''}" data-notr>${numK(x.bal)}</span></div></div></div></div>`).join('')||emptyBox('calc',L('没有未付清的采购单','Nothing outstanding'))}</div>`}
   else{const fin=DB.all('fin').filter(f=>f.status!=='void'&&(f.type==='rcv'||f.status==='paid')).sort((a,b)=>(b.pt||b.t)-(a.pt||a.t));const bal={cash:0,bank:0,momo:0};
@@ -1090,6 +1132,8 @@ function arSheet(id){const s=DB.get('so',id);const x=arOf(s);
    <div class="kv" style="margin-top:12px"><div><div class="l">${L('应收','Due')}</div><div class="v" data-notr>${money(x.tot)}</div></div><div><div class="l">${L('余额','Balance')}</div><div class="v ${x.bal>0?'red':'green'}" data-notr>${money(x.bal)}</div></div><div><div class="l">${L('已收','Received')}</div><div class="v" data-notr>${money(x.got)}</div></div></div>
    <div class="box" style="padding:6px 16px">${x.fs.map(f=>`<div class="li" style="cursor:default"><div style="flex:1;min-width:0"><div class="b sm">${pmName(f.method)} · <span data-notr>${money(f.amount)}</span></div><div class="xs muted">${fdate(f.t)} · ${L('出纳','Cashier')} ${esc(userName(f.by))}${f.vby?' · '+L('会计','Accountant')+' '+esc(userName(f.vby)):''}${nm(f.note)?' · '+esc(nm(f.note)):''}</div></div>
      ${f.status==='recorded'&&can('fin_verify')?`<button class="pill g" onclick="finVerify('${f.id}','${id}')">${L('核对','Verify')}</button>`:stB(FN_ST,f.status)}</div>`).join('')||`<div class="sm muted" style="padding:10px 0">${L('还没有收款记录','No receipts yet')}</div>`}</div>
+   ${s.status==='submitted'&&own('so_fin')?`<button class="bigbtn" style="width:100%;margin-top:14px" onclick="soFin('${id}')">${s.pay==='credit'?L('赊销：拒绝 / 直报总经理审批','Credit: reject / send to GM'):L('审核收款并放行出库','Verify payment & release')}</button>`:''}
+   ${s.status==='credit_gm'&&S.me.role==='gm'?`<button class="bigbtn" onclick="soGm('${id}')">${L('赊销审批：通过 / 拒绝','Credit: approve / reject')}</button>`:''}
    ${can('fin_receive')&&x.bal>0.005?`<div class="sec-h" style="margin-top:16px">${L('登记收款','Record receipt')}</div><div class="row gap"><input class="inp" id="rcA" type="number" inputmode="decimal" value="${(+x.bal).toFixed(2)}" style="background:var(--card)"><span class="b" data-notr>${esc(baseIso())}</span></div>
      <div class="chips wrap" style="margin-top:10px">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#rcN',false)">${pmName(k)}</span>`).join('')}</div>
      <input class="inp" id="rcN" style="margin-top:10px;background:var(--card)" placeholder="${refLabel('cash')}${L('（可选）',' (optional)')}">
@@ -1098,29 +1142,30 @@ function arSheet(id){const s=DB.get('so',id);const x=arOf(s);
 function finRecv(id){const s=DB.get('so',id);const x=arOf(s);const amt=+$('#rcA').value;if(!(amt>0))return toast(L('请输入收款金额','Enter an amount'));if(amt>x.bal+0.005)return toast(L('超过未收余额','More than the balance'));
   const m=($('#sheet .chip.on')||{}).dataset.m||'cash';DB.put('fin',{type:'rcv',ref:id,refKind:'so',amount:amt,method:m,note:$('#rcN').value.trim(),status:'recorded',t:Date.now()});
   toast(L('已登记收款，等待会计核对','Receipt recorded — waiting for the accountant'),false);arSheet(id);softRender(true)}
-function finVerify(fid,so){const f=DB.get('fin',fid);DB.put('fin',{...f,status:'verified',vby:S.me.id,vt:Date.now()});toast(L('已核对','Verified'),false);arSheet(so);softRender(true)}
+function finVerify(fid,so){if(!own('fin_verify'))return;const f=DB.get('fin',fid);if(!f||f.status!=='recorded')return;DB.put('fin',{...f,status:'verified',vby:S.me.id,vt:Date.now()});const d=DB.get('so',so);if(d&&d.status==='submitted'&&d.pay!=='credit'&&arOf(d).bal<=0.005&&arOf(d).fs.every(x=>x.status==='verified'))DB.put('so',{...d,status:'approved',fin:{by:S.me.id,t:Date.now(),note:L('全额收款已核对，放行出库','Full payment verified; released')}});toast(L('已核对','Verified'),false);arSheet(so);softRender(true)}
 /* ===== 付款审批流程：会计提交付款申请 → 总经理审批（批准 / 驳回）→ 出纳按批准金额付款 ===== */
 const PAY_PURP={dep:['预付款 / 定金','Deposit / advance'],goods:['货款','Goods payment'],final:['尾款','Final payment'],freight:['运费 / 清关','Freight / clearance'],other:['其他','Other']};
 const purpName=k=>{const p=PAY_PURP[k]||PAY_PURP.other;return L(p[0],p[1])};
 /* 每笔付款的过程记录：谁申请、谁批准 / 驳回、谁付款 */
 function payTrail(f){const st=(ic_,c,t,who,at,note)=>`<div class="row" style="gap:8px;align-items:flex-start;margin-top:6px"><span style="color:${c};flex:none">${ic(ic_,14)}</span><div class="xs" style="flex:1;min-width:0"><b>${t}</b> · ${esc(userName(who))} · ${fdate(at)}${note?`<div class="muted">${esc(note)}</div>`:''}</div></div>`;
   let h=st('doc','var(--purple)',L('会计申请','Requested by accountant'),f.by,f.at||f.t,[purpName(f.purp),f.due?L('希望 ','wanted by ')+fday(f.due):'',nm(f.note)].filter(Boolean).join(' · '));
+  if(f.oby)h+=st('check','var(--green)',L('运营经理审批','Operations review'),f.oby,f.ot,f.onote);
   if(f.gby)h+=st(f.status==='rejected'?'x':'check',f.status==='rejected'?'var(--red)':'var(--green)',f.status==='rejected'?L('总经理驳回','Rejected by GM'):L('总经理批准','Approved by GM'),f.gby,f.gt,f.gnote);
   if(f.pby)h+=st('out','var(--orange)',L('出纳付款','Paid by cashier'),f.pby,f.pt,[pmName(f.method),f.pref].filter(Boolean).join(' · '));
   if(f.status==='void')h+=`<div class="xs muted" style="margin-top:6px">${L('已撤回作废','Withdrawn')}</div>`;return h}
 function apSheet(id){const p=DB.get('po',id);const x=apOf(p);const me=S.me.role;
   const acts=f=>{let b='';
-    if(f.status==='req'&&me==='gm')b+=`<button class="pill g" onclick="payGm('${f.id}')">${L('审批','Review')}</button>`;
-    if(f.status==='approved'&&can('fin_pay'))b+=`<button class="pill g" onclick="finPaySheet('${f.id}')">${L('付款','Pay')}</button>`;
-    if(f.status==='approved'&&me==='gm')b+=`<button class="pill w" style="margin-left:6px" onclick="payUnapprove('${f.id}')">${L('撤销批准','Undo approval')}</button>`;
+    if(payCanReview(f))b+=`<button class="pill g" onclick="payGm('${f.id}')">${L('审批','Review')}</button>`;
+    if(payReady(f)&&own('fin_pay'))b+=`<button class="pill g" onclick="finPaySheet('${f.id}')">${L('付款','Pay')}</button>`;
+    if(f.status==='approved'&&['gm','ops'].includes(me))b+=`<button class="pill w" style="margin-left:6px" onclick="payUnapprove('${f.id}')">${L('撤销批准','Undo approval')}</button>`;
     if(['req','rejected'].includes(f.status)&&(me==='acct'||me==='gm'))b+=`${f.status==='rejected'?`<button class="pill g" onclick="payReqSheet('${id}','${f.id}')">${L('修改后重新提交','Edit & resubmit')}</button>`:''}<button class="pill w" style="margin-left:6px" onclick="finVoid('${f.id}','${id}')">${L('撤回','Withdraw')}</button>`;
     return b||stB(FN_ST,f.status)};
   openSheet(`<div class="row between"><div class="sh" data-notr>${esc(p.no)}</div>${stB(PO_ST,p.status)}</div><div class="sm muted">${esc(ptName(p.sup))} · ${fdate(p.t)}</div>
    <div class="kv" style="margin-top:12px"><div><div class="l">${L('应付','Due')}</div><div class="v" data-notr>${money(x.tot)}</div></div><div><div class="l">${L('已付','Paid')}</div><div class="v" data-notr>${money(x.paid)}</div></div><div><div class="l">${L('审批中 / 已批准待付','In review / approved')}</div><div class="v" data-notr>${money(x.req)} / ${money(x.appr)}</div></div><div><div class="l">${L('余额','Balance')}</div><div class="v ${x.bal>0?'red':'green'}" data-notr>${money(x.bal)}</div></div></div>
-   <div class="xs muted" style="margin-top:6px">${L('流程：会计申请 → 总经理批准 → 出纳付款','Flow: accountant requests → GM approves → cashier pays')}</div>
+   <div class="xs muted" style="margin-top:6px">${L('流程：会计申请 → 运营经理批准 → 超过 2000 再由总经理批准 → 出纳付款','Flow: accountant requests → GM approves → cashier pays')}</div>
    <div class="box" style="padding:6px 16px">${x.fs.slice().sort((a,b)=>b.t-a.t).map(f=>`<div class="li" style="cursor:default;align-items:flex-start"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b class="sm" data-notr>${money(f.amount)}</b>${stB(FN_ST,f.status)}</div>${payTrail(f)}</div><div style="flex:none;display:flex;flex-direction:column;gap:6px;align-items:flex-end">${acts(f)}</div></div>`).join('')||`<div class="sm muted" style="padding:10px 0">${L('还没有付款申请','No payment requests yet')}</div>`}</div>
-   ${(me==='acct'||me==='gm')&&x.free>0.005?`<button class="bigbtn" style="width:100%;margin-top:14px" onclick="payReqSheet('${id}')">${ic('plus',18)} ${L('提交付款申请（交总经理审批）','Request payment (for GM approval)')}</button>`:''}
-   ${me!=='acct'&&me!=='gm'&&x.free>0.005?`<div class="note-y" style="margin-top:12px">${L('付款流程：会计提交申请 → 总经理批准 → 出纳付款。','Flow: the accountant requests, the GM approves, then the cashier pays.')}</div>`:''}`)}
+   ${(me==='acct'||me==='gm')&&x.free>0.005?`<button class="bigbtn" style="width:100%;margin-top:14px" onclick="payReqSheet('${id}')">${ic('plus',18)} ${L('提交付款申请（运营经理先审批）','Request payment (operations first)')}</button>`:''}
+   ${me!=='acct'&&me!=='gm'&&x.free>0.005?`<div class="note-y" style="margin-top:12px">${L('付款流程：会计提交申请 → 运营经理批准 → 超过 2000 再由总经理批准 → 出纳付款。','Flow: the accountant requests, the GM approves, then the cashier pays.')}</div>`:''}`)}
 /* 会计：填写付款申请（金额、用途、希望付款日期、付款方式、说明） */
 function payReqSheet(po,fid){const p=DB.get('po',po),x=apOf(p),f=fid?DB.get('fin',fid):null;const max=x.free+(f?0:0);
   S.pq={purp:f?f.purp||'goods':'goods',method:f?f.method||'bank':'bank'};
@@ -1133,15 +1178,17 @@ function payReqSheet(po,fid){const p=DB.get('po',po),x=apOf(p),f=fid?DB.get('fin
    <div class="fld"><label>${L('希望付款日期','Pay by')}</label><input class="inp" id="pqD" type="date" value="${f&&f.due?new Date(f.due).toISOString().slice(0,10):new Date(Date.now()+864e5).toISOString().slice(0,10)}" style="background:var(--card)"></div>
    <div class="fld"><label>${L('申请说明（必填，例如：合同约定发货前付 50%）','Reason (required, e.g. 50% before shipment per contract)')}</label><input class="inp" id="pqN" value="${esc(f?nm(f.note):'')}" style="background:var(--card)"></div>
    <div class="sm red" id="pqE" style="margin-top:8px"></div>
-   <button class="bigbtn" style="width:100%;margin-top:12px" onclick="payReqSave('${po}','${fid||''}')">${L('提交给总经理审批','Send to the GM for approval')}</button>`);
+   <button class="bigbtn" style="width:100%;margin-top:12px" onclick="payReqSave('${po}','${fid||''}')">${L('提交给运营经理审批','Send to operations for approval')}</button>`);
 }
 function payReqSave(po,fid){const x=apOf(DB.get('po',po)),f=fid?DB.get('fin',fid):null,e=$('#pqE');const amt=+$('#pqA').value,note=$('#pqN').value.trim(),due=$('#pqD').value;
   if(!(amt>0))return e.textContent=L('请输入金额','Enter an amount');if(amt>x.free+0.005)return e.textContent=L('超过可申请金额','More than can be requested');
   if(note.length<2)return e.textContent=L('请填写申请说明','Enter a reason');
   const d={...(f||{type:'pay',ref:po,refKind:'po'}),amount:+amt.toFixed(2),purp:S.pq.purp,method:S.pq.method,due:due?+new Date(due):0,note,status:'req',at:Date.now(),t:f?f.t:Date.now()};
-  delete d.gby;delete d.gt;delete d.gnote;DB.put('fin',d);closeSheet(true);toast(L('已提交，等待总经理审批','Sent — waiting for the GM'),false);apSheet(po);softRender(true)}
+  delete d.oby;delete d.ot;delete d.onote;delete d.gby;delete d.gt;delete d.gnote;DB.put('fin',d);closeSheet(true);toast(L('已提交，等待总经理审批','Sent — waiting for the GM'),false);apSheet(po);softRender(true)}
 /* 总经理：逐笔审批，可批准或驳回（驳回需写原因） */
-function payGm(fid){const f=DB.get('fin',fid),p=DB.get('po',f.ref),x=apOf(p);if(S.me.role!=='gm')return;
+const payCanReview=f=>f.type==='pay'&&(S.me.role==='ops'&&f.status==='req'||S.me.role==='gm'&&f.status==='gm_pending'&&!!f.oby);
+const payReady=f=>f.status==='approved'&&!!f.oby&&(+f.amount<=2000||!!f.gby);
+function payGm(fid){const f=DB.get('fin',fid);if(!f||!payCanReview(f))return;const p=DB.get('po',f.ref),x=apOf(p);
   const after=Math.max(0,x.bal-f.amount);const sup=DB.all('po').filter(o=>o.sup===p.sup).map(o=>apOf(o)).reduce((a,y)=>a+y.bal,0);
   openSheet(`<div class="sh">${L('审批付款申请','Review payment request')}</div><div class="sm muted"><span data-notr>${esc(p.no)}</span> · ${esc(ptName(p.sup))}</div>
    <div style="font-size:30px;font-weight:800;margin-top:12px" data-notr>${moneyBase(f.amount)}</div>
@@ -1152,25 +1199,25 @@ function payGm(fid){const f=DB.get('fin',fid),p=DB.get('po',f.ref),x=apOf(p);if(
    <div class="fld"><label>${L('审批意见（驳回时必填）','Comment (required to reject)')}</label><input class="inp" id="pgN" style="background:var(--card)"></div>
    <div class="sm red" id="pgE" style="margin-top:8px"></div>
    <div class="row gap" style="margin-top:12px"><button class="bigbtn dark" style="flex:1" onclick="payGmDo('${fid}',false)">${ic('x',18)} ${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="payGmDo('${fid}',true)">${ic('check',18)} ${L('批准付款','Approve')}</button></div>`)}
-function payGmDo(fid,ok){const f=DB.get('fin',fid),n=$('#pgN').value.trim();if(!f||f.status!=='req')return toast(L('这笔申请已处理','Already handled'));
+function payGmDo(fid,ok){const f=DB.get('fin',fid),n=$('#pgN').value.trim();if(!f||!payCanReview(f))return toast(L('这笔申请已处理','Already handled'));
   if(!ok&&n.length<2)return $('#pgE').textContent=L('驳回请写明原因','Give a reason for rejecting');
-  DB.put('fin',{...f,status:ok?'approved':'rejected',gby:S.me.id,gt:Date.now(),gnote:n});closeSheet(true);
-  toast(ok?L('已批准，出纳会收到付款通知','Approved — the cashier has been notified'):L('已驳回，会计会收到通知','Rejected — the accountant has been notified'),false);apSheet(f.ref);softRender(true)}
-function payUnapprove(fid){const f=DB.get('fin',fid);if(S.me.role!=='gm'||f.status!=='approved')return;DB.put('fin',{...f,status:'req',gby:null,gt:null,gnote:''});toast(L('已撤销批准，回到待审批','Approval undone'),false);apSheet(f.ref);softRender(true)}
+  const ops=S.me.role==='ops';DB.put('fin',{...f,status:ok?(ops&&f.amount>2000?'gm_pending':'approved'):'rejected',...(ops?{oby:S.me.id,ot:Date.now(),onote:n}:{gby:S.me.id,gt:Date.now(),gnote:n})});closeSheet(true);
+  toast(ok?(ops&&f.amount>2000?L('运营经理已通过，等待总经理审批','Operations approved — awaiting GM'):L('已批准，出纳会收到付款通知','Approved — the cashier has been notified')):L('已驳回，会计会收到通知','Rejected — the accountant has been notified'),false);apSheet(f.ref);softRender(true)}
+function payUnapprove(fid){const f=DB.get('fin',fid);if(!['gm','ops'].includes(S.me.role)||f.status!=='approved')return;DB.put('fin',{...f,status:'req',oby:null,ot:null,onote:'',gby:null,gt:null,gnote:''});toast(L('已撤销批准，回到待审批','Approval undone'),false);apSheet(f.ref);softRender(true)}
 /* 总经理：所有待审批的付款申请 */
-function payReview(){const l=DB.all('fin').filter(f=>f.type==='pay'&&f.status==='req').sort((a,b)=>(a.due||a.t)-(b.due||b.t));
+function payReview(){const l=DB.all('fin').filter(f=>payCanReview(f)).sort((a,b)=>(a.due||a.t)-(b.due||b.t));
   openSheet(`<div class="sh">${L('付款申请待审批','Payment requests to review')}</div>
    <div class="box" style="padding:4px 16px">${l.map(f=>{const p=DB.get('po',f.ref)||{};return `<div class="li" onclick="payGm('${f.id}')"><div class="qi" style="background:#FFF4D6;color:#8a6200">${ic('calc',18)}</div><div style="flex:1;min-width:0"><div class="b sm one"><span data-notr>${esc(p.no||'')}</span> · ${esc(ptName(p.sup))}</div><div class="xs muted one">${purpName(f.purp)} · ${esc(userName(f.by))} · ${f.due?L('希望 ','by ')+fday(f.due):fdate(f.t)}</div></div><b data-notr style="white-space:nowrap">${money(f.amount)}</b></div>`}).join('')||`<div class="sm muted" style="padding:12px 0">${L('没有待审批的付款','Nothing to review')}</div>`}</div>`)}
 function finVoid(fid,po){const f=DB.get('fin',fid);if(!['req','rejected'].includes(f.status))return toast(L('已批准的付款只能由总经理撤销','Only the GM can undo an approved payment'));DB.put('fin',{...f,status:'void'});toast(L('已撤回','Withdrawn'),false);apSheet(po);softRender(true)}
 /* 出纳：只能按总经理批准的金额付款 */
-function finPaySheet(fid){const f=DB.get('fin',fid);const p=DB.get('po',f.ref);if(f.status!=='approved')return toast(L('需要总经理批准后才能付款','Needs GM approval first'));
+function finPaySheet(fid){const f=DB.get('fin',fid);const p=DB.get('po',f.ref);if(!own('fin_pay')||!payReady(f))return toast(L('需要运营经理审批；超过 2000 还需总经理审批','Operations approval required; over 2000 also needs GM approval'));
   openSheet(`<div class="sh">${L('执行付款','Make payment')}</div><div class="sm muted"><span data-notr>${esc(p.no)}</span> · ${esc(ptName(p.sup))}</div>
    <div style="font-size:30px;font-weight:800;margin-top:12px" data-notr>${moneyBase(f.amount)}</div>
    <div class="box" style="padding:10px 14px">${payTrail(f)}</div>
    <div class="chips wrap" style="margin-top:12px">${Object.keys(PM).map(k=>`<span class="chip ${k===(f.method||'bank')?'on':''}" data-m="${k}" onclick="pmPick(this,'#pyN',true)">${pmName(k)}</span>`).join('')}</div>
    <input class="inp" id="pyN" style="margin-top:10px;background:var(--card)" placeholder="${refLabel(f.method||'bank')}${L('（必填）',' (required)')}">
    <button class="bigbtn" style="width:100%;margin-top:14px" onclick="finPay('${fid}')">${ic('check',18)} ${L('确认已付款','Confirm paid')}</button>`)}
-function finPay(fid){const f=DB.get('fin',fid);if(f.status!=='approved')return toast(L('需要总经理批准后才能付款','Needs GM approval first'));const ref=$('#pyN').value.trim();if(ref.length<2)return toast(L('请填写','Enter the ')+refLabel(($('#sheet .chip.on')||{dataset:{}}).dataset.m));
+function finPay(fid){const f=DB.get('fin',fid);if(!own('fin_pay')||!payReady(f))return toast(L('需要运营经理审批；超过 2000 还需总经理审批','Operations approval required; over 2000 also needs GM approval'));const ref=$('#pyN').value.trim();if(ref.length<2)return toast(L('请填写','Enter the ')+refLabel(($('#sheet .chip.on')||{dataset:{}}).dataset.m));
   const m=($('#sheet .chip.on')||{}).dataset.m||'bank';DB.put('fin',{...f,status:'paid',method:m,pby:S.me.id,pt:Date.now(),pref:ref});
   toast(L('已付款','Paid'),false);apSheet(f.ref);softRender(true)}
 function exportFin(){const fin=DB.all('fin').filter(f=>f.status!=='void'&&(f.type==='rcv'||f.status==='paid')).sort((a,b)=>(a.pt||a.t)-(b.pt||b.t));let bal=0;
@@ -1387,6 +1434,7 @@ V.me=()=>{const me=S.me;const pf=Alerts.prefs();const row=meRow;const P=plan();
     ${row('print',L('打印机','Printers'),L('WiFi 网络打印机，自动搜索','WiFi network printers — auto discovery'),"go('printers')")}
     ${row('shield',L('手机权限','Phone permissions'),L('定位 · 相机 · 麦克风','Location · camera · microphone'),'permSheet()')}
     ${!isNative()?row('download',L('下载安卓安装包','Download Android app'),L('支持应用内一键更新','APK with in-app updates'),'doApk()'):''}
+    ${row('bell',L('未读提醒与后台推送','Unread alerts & background push'),'',"pushSettings()")}
     ${row('refresh',L('检查更新','Check for updates'),`<span data-notr>v${APP_VER} · build ${APP_BUILD}</span>`,'checkUpdate(true)',hasUpd()?'<span style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span>':null)}</div>
    <button class="bigbtn ghost" style="width:100%;margin-top:18px;color:var(--red)" onclick="doLogout()">${ic('logout',18)} ${L('退出登录','Sign out')}</button>
    <div class="xs muted" style="text-align:center;margin-top:14px" data-notr>v${APP_VER} · build ${APP_BUILD}</div></div>`};
@@ -1417,10 +1465,10 @@ V.mgmt=()=>hdr(L('后台管理','Management'))+`<div class="pad"><div class="box
 V.m_users=()=>{const us=DB.all('users');const ps=positions().filter(p=>!p.del);
   return hdr(L('账号与密码','Accounts & passwords'),`<button class="icbtn" onclick="acctSheet()">${ic('plus')}</button>`)+`<div class="pad">
    <div class="note-g" style="margin-top:4px">${L('账号按部门管理：总经办、采购部、销售部、仓储部、财务部。新增账号先选部门、再选职位，账号代码自动生成；所有账号初始密码都是 666666，登录时同一职位有多人会让本人选择姓名。总经理可在这里为任何人重设密码，也可用下面的按钮把所有人的密码统一重设。','Accounts by department. New accounts: department, then position; the code is generated. Every account starts with password 666666; when a position has several people, each picks their name at sign-in. The GM can reset anyone’s password here, or reset everyone’s below.')}</div>
-   ${S.me.role==='gm'?`<button class="bigbtn ghost" style="width:100%;margin-top:10px;height:46px;font-size:14px" onclick="pwAllSheet()">${ic('lock',16)} ${L('所有人密码统一重设','Reset everyone’s password')}</button>`:''}
+   ${S.me.role==='chair'?`<button class="bigbtn ghost" style="width:100%;margin-top:10px;height:46px;font-size:14px" onclick="pwAllSheet()">${ic('lock',16)} ${L('所有人密码统一重设','Reset everyone’s password')}</button>`:''}
    ${DEPTS.map(d=>{const l=us.filter(u=>d.roles.includes(u.role)).sort((a,b)=>String(a.code).localeCompare(String(b.code)));const dp=ps.filter(p=>p.dept===d.id);
     return `<div class="sec-h" style="margin-top:18px"><span class="row gap6"><span class="badge ${ROLES[d.roles[0]].c}">${deptName(d)}</span><span class="xs muted">${l.length} ${L('人','')}</span></span><a onclick="acctSheet(null,'${d.id}')">+ ${L('新增账号','Add account')}</a></div>
-    <div class="chips wrap" style="margin:0 0 8px">${d.roles.map(r=>`<span class="chip" style="cursor:default;font-size:12px;padding:5px 10px">${roleName(r)}</span>`).join('')}${dp.map(p=>`<span class="chip" style="font-size:12px;padding:5px 10px" onclick="S.eu=null;posSheet('${d.id}','${p.id}')">${esc(nm(p.n))} ${ic('edit',12)}</span>`).join('')}${d.roles.includes('gm')&&S.me.role!=='gm'?'':`<span class="chip" style="font-size:12px;padding:5px 10px;border:1.5px dashed var(--muted);background:transparent" onclick="S.eu=null;posSheet('${d.id}')">+ ${L('新增职位','New position')}</span>`}</div>
+    <div class="chips wrap" style="margin:0 0 8px">${d.roles.map(r=>`<span class="chip" style="cursor:default;font-size:12px;padding:5px 10px">${roleName(r)}</span>`).join('')}${dp.map(p=>`<span class="chip" style="font-size:12px;padding:5px 10px" onclick="S.eu=null;posSheet('${d.id}','${p.id}')">${esc(nm(p.n))} ${ic('edit',12)}</span>`).join('')}${d.roles.includes('chair')&&S.me.role!=='chair'?'':`<span class="chip" style="font-size:12px;padding:5px 10px;border:1.5px dashed var(--muted);background:transparent" onclick="S.eu=null;posSheet('${d.id}')">+ ${L('新增职位','New position')}</span>`}</div>
     <div class="box" style="margin-top:0;padding:4px 16px">${l.map(u=>`<div class="li" onclick="acctSheet('${u.id}')"><div class="av" style="width:36px;height:36px;font-size:14px;${u.active===false?'background:#D6D3CC':''}">${esc(nmP(u.name).slice(0,1))}</div><div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(u.name))} <span class="xs muted" style="font-weight:600">${esc(userTitle(u))}</span>${u.admin&&u.role!=='gm'?` <span class="badge b-dark" style="padding:1px 7px">${L('后台','Backend')}</span>`:''}</div><div class="xs muted"><span data-notr>${esc(u.code)}</span> · ${esc(whName(u.wh))}${u.active===false?` · <b class="red">${L('已停用登录','Sign-in disabled')}</b>`:''}</div></div><button class="pill w" style="box-shadow:0 1px 3px rgba(0,0,0,.08)" onclick="event.stopPropagation();acctSheet('${u.id}')">${ic('edit',14)} ${L('重新编辑','Edit')}</button></div>`).join('')||`<div class="sm muted" style="padding:10px 0">${L('暂无账号','No accounts')}</div>`}</div>`}).join('')}</div>`};
 /* 总经理：把所有账号（含自己）的密码统一重设，默认 666666 */
 function pwAllSheet(){openSheet(`<div class="sh">${L('所有人密码统一重设','Reset everyone’s password')}</div><div class="sm" style="margin-top:8px;line-height:1.7">${L(`全部 ${DB.all('users').length} 个账号（包括您自己）的密码都会改成下面的密码，方便大家登录。之后每个人可以在“我的 → 修改密码”自己改，您也可以随时在这里为某个人单独重设。`,`All ${DB.all('users').length} accounts (including yours) get the password below. Each person can change it later under Me → Change password.`)}</div>
@@ -1432,12 +1480,12 @@ async function pwAllDo(){const pw=$('#paP').value.trim();if(pw.length<6)return $
     DB.ver++;closeSheet(true);toast(L(`已把所有人的密码设为 ${pw}`,`Everyone’s password is now ${pw}`),false);render(false)}catch(e){$('#paE').textContent=e.message}}
 /* 新增 / 重新编辑账号：先选部门，再选职位（基本职位或本部门新增的职位），账号代码自动生成 */
 function acctSheet(id,dept){const u=id?{...DB.get('users',id)}:{code:'',name:'',wh:activeWh()[0].id,active:true,role:'',pos:null};
-  if(S.me.role!=='gm'&&u.role==='gm')return toast(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));
+  if(S.me.role!=='chair'&&u.role==='chair')return toast(L('董事长账号只能由董事长修改','Only the chairman can edit chairman accounts'));
   S.eu=u;S.euDept=id?deptOf(u.role).id:(dept||'');S.euCodeTouched=false;S.euSelf=id===S.me.id;acctDraw()}
 function acctPick(role,pos){if(S.euSelf)return;S.eu.role=role;S.eu.pos=pos||null;if(!S.eu.id&&!S.euCodeTouched)S.eu.code=nextCode(role);acctDraw()}
-function acctDraw(){const u=S.eu,id=u.id,self=S.euSelf;const depts=DEPTS.filter(d=>S.me.role==='gm'||!d.roles.includes('gm'));const d=DEPTS.find(x=>x.id===S.euDept);
+function acctDraw(){const u=S.eu,id=u.id,self=S.euSelf;const depts=DEPTS;const d=DEPTS.find(x=>x.id===S.euDept);
   const chip=(on,txt,fn,extra='')=>`<span class="chip ${on?'on':''}" ${self?'style="opacity:.5;pointer-events:none"':`onclick="${fn}"`}${extra}>${txt}</span>`;
-  const pos=d?[...d.roles.map(r=>({role:r,pos:null,n:roleName(r)})),...positions().filter(p=>!p.del&&p.dept===d.id&&d.roles.includes(p.role)).map(p=>({role:p.role,pos:p.id,n:nm(p.n)}))]:[];
+  const pos=d?[...d.roles.filter(r=>r!=='chair'||S.me.role==='chair').map(r=>({role:r,pos:null,n:roleName(r)})),...positions().filter(p=>!p.del&&p.dept===d.id&&d.roles.includes(p.role)&&(p.role!=='chair'||S.me.role==='chair')).map(p=>({role:p.role,pos:p.id,n:nm(p.n)}))]:[];
   openSheet(`<div class="sh">${id?L('重新编辑','Edit account'):L('新增岗位账号','New post account')}</div>
    <div class="fld"><label>${L('① 部门','① Department')}${self?` <span class="xs muted">${L('（不能修改自己的部门和职位）','(you cannot change your own)')}</span>`:''}</label><div class="chips wrap">${depts.map(x=>chip(S.euDept===x.id,deptName(x),`S.euDept='${x.id}';acctDraw()`)).join('')}</div></div>
    ${d?`<div class="fld"><label>${L('② 职位','② Position')}</label><div class="chips wrap" id="euRoles">${pos.map(p=>chip(u.role===p.role&&(u.pos||null)===p.pos,esc(p.n),`acctPick('${p.role}',${p.pos?`'${p.pos}'`:'null'})`,` data-r="${p.role}"`)).join('')}${self?'':`<span class="chip" style="border:1.5px dashed var(--muted);background:transparent" onclick="posSheet('${d.id}')">+ ${L('新增职位','New position')}</span>`}</div></div>`:''}
@@ -1446,7 +1494,7 @@ function acctDraw(){const u=S.eu,id=u.id,self=S.euSelf;const depts=DEPTS.filter(
    <div class="fld"><label>${L('门店','Store')}</label><select class="inp" style="background:var(--card)" onchange="S.eu.wh=this.value">${activeWh().map(w=>`<option value="${w.id}" ${w.id===u.wh?'selected':''}>${esc(nm(w.n))}</option>`).join('')}</select></div>
    <div class="fld"><label>${id?L('重设密码（留空不改）','Reset password (leave empty to keep)'):L('初始密码（留空 = 666666）','Starting password (empty = 666666)')}</label><input class="inp" style="background:var(--card)" id="euPw" type="text" autocomplete="new-password"></div>
    ${self?'':`<div class="row between" style="margin-top:14px"><span class="sm b">${L('允许登录','Allow sign-in')}</span>${sw(u.active!==false,"S.eu.active=!(S.eu.active!==false);this.classList.toggle('on')")}</div>`}
-   ${S.me.role==='gm'&&!self?`<div class="row between" style="margin-top:14px"><div><div class="sm b">${L('授权使用后台','Allow backend access')}</div><div class="xs muted">${L('可管理账号密码、门店、商品资料等（不能授权他人、不能改总经理账号）','Can manage accounts, stores, products… (cannot grant access or edit GM accounts)')}</div></div>${sw(!!u.admin,"S.eu.admin=!S.eu.admin;this.classList.toggle('on')")}</div>`:''}
+   ${S.me.role==='chair'&&!self?`<div class="row between" style="margin-top:14px"><div><div class="sm b">${L('授权使用后台','Allow backend access')}</div><div class="xs muted">${L('可管理账号密码、门店、商品资料等（不能授权他人、不能改董事长账号）','Can manage accounts, stores, products… (cannot grant access or edit chairman accounts)')}</div></div>${sw(!!u.admin,"S.eu.admin=!S.eu.admin;this.classList.toggle('on')")}</div>`:''}
    <div class="sm red" id="euE" style="margin-top:8px"></div><button class="bigbtn" style="width:100%;margin-top:12px" onclick="acctSave()">${L('保存','Save')}</button>`)}
 /* 在部门里新增职位：起个名字，选择权限参照本部门的哪个基本职位 */
 function posSheet(dept,pid){const d=DEPTS.find(x=>x.id===dept);const p=pid?JSON.parse(JSON.stringify(posById(pid))):{id:'P'+Date.now().toString(36),dept,role:d.roles[0],n:{zh:'',en:''}};S.ep2=p;const back=!!S.eu;
@@ -1457,7 +1505,7 @@ function posSheet(dept,pid){const d=DEPTS.find(x=>x.id===dept);const p=pid?JSON.
    <button class="bigbtn" style="width:100%;margin-top:12px" onclick="posSave(${back})">${L('保存职位','Save position')}</button>
    ${pid?`<button class="bigbtn dark" style="width:100%;margin-top:10px" onclick="posDel('${pid}')">${ic('trash',18)} ${L('删除职位','Delete position')}</button>`:''}`)}
 async function posSave(back){const p=S.ep2;if(!p.n.zh.trim()&&!p.n.en.trim())return $('#ep2E').textContent=L('请填写职位名称','Enter a name');await fillEn(p.n);
-  if(DEPTS.find(x=>x.id===p.dept).roles.includes('gm')&&S.me.role!=='gm')return $('#ep2E').textContent=L('总经办的职位只能由总经理设置','Only the GM can set positions in the GM office');
+  if(DEPTS.find(x=>x.id===p.dept).roles.includes('chair')&&S.me.role!=='chair')return $('#ep2E').textContent=L('总经办的职位只能由总经理设置','Only the GM can set positions in the GM office');
   const s=DB.get('settings','app')||{id:'app'};const l=(s.positions||[]).filter(x=>x.id!==p.id);l.push(p);DB.put('settings',{...s,positions:l});toast(L('职位已保存','Position saved'),false);
   if(back&&S.eu&&!S.euSelf){S.euDept=p.dept;acctPick(p.role,p.id)}else{closeSheet(true);render(false)}}
 function posDel(pid){const n=DB.all('users').filter(u=>u.pos===pid).length;if(n)return toast(L(`还有 ${n} 个账号使用这个职位，请先改成其他职位`,`${n} account(s) still use this position — change them first`));
@@ -1596,11 +1644,11 @@ V.m_settings=()=>{const s=DB.get('settings','app')||{id:'app',co:{zh:'',en:''}};
   return hdr(L('系统设置','Settings'))+`<div class="pad"><div class="box" style="margin-top:6px"><h4>${L('公司','Company')}</h4>
    <div class="fld"><label>${L('公司名称（中）','Company (Chinese)')}</label><input class="inp" style="background:var(--soft)" id="stCz" data-zh2en="#stCe" value="${esc((s.co||{}).zh||'')}"></div><div class="fld"><label>${L('公司名称（英）','Company (English)')}</label><input class="inp" style="background:var(--soft)" id="stCe" data-auto="1" placeholder="${L('自动生成，可修改','Auto-filled, editable')}" value="${esc((s.co||{}).en||'')}"></div>
    <div class="fld"><label>${L('结算货币（只用本国货币，全部单据和报表都用它）','Settlement currency (local currency only, used everywhere)')}</label><select class="inp" style="background:var(--soft)" id="stB">${isos.map(c=>`<option value="${c.iso}" ${c.iso===baseIso()?'selected':''}>${esc(c.sym)} ${c.iso} · ${esc(S.lang==='zh'?c.zh:c.en)}</option>`).join('')}</select></div>
-    <div class="row gap" style="margin-top:4px"><div class="fld" style="flex:1;min-width:0"><label>${L('特殊费用限额（超过需审批）','Special expense limit')}</label><input class="inp" id="stEL" type="number" inputmode="decimal" style="background:var(--soft)" value="${expLimit()}"></div>
+    <div class="row gap" style="margin-top:4px"><div class="fld" style="flex:1;min-width:0"><label>${L('超过此金额需追加总经理审批','GM approval required above')}</label><input class="inp" id="stEL" type="number" readonly inputmode="decimal" style="background:var(--soft)" value="${expLimit()}"></div>
      <div class="fld" style="flex:1;min-width:0"><label>${L('外勤上班时间（点）','Field work start (hour)')}</label><input class="inp" id="stWS" type="number" min="0" max="23" style="background:var(--soft)" value="${+(s.workStart||9)}"></div></div>
    <div class="xs muted" style="margin-top:6px">${L('更改结算货币不会换算已有金额，请在开始使用前设定。','Changing it does not convert existing amounts — set it before you start.')}</div>
    <button class="bigbtn" style="width:100%;margin-top:14px" onclick="coSave()">${L('保存','Save')}</button></div>
-   ${S.me.role==='gm'?`<div class="box"><h4>${L('数据管理','Data')}</h4>
+   ${S.me.role==='chair'?`<div class="box"><h4>${L('数据管理','Data')}</h4>
     <div class="xs muted" style="line-height:1.7">${L('清空后：商品、分类、客户、供应商、所有单据、库存流水、财务和物流记录全部删除；账号密码、门店、公司设置和运费价格保留。','Clears items, categories, customers, suppliers, all documents, stock movements, finance and logistics; keeps accounts, stores, company settings and freight rates.')}</div>
     <button class="bigbtn" style="width:100%;margin-top:12px;background:var(--red);color:#fff" onclick="resetSheet()">${ic('trash',18)} ${L('清空业务数据，开始正式使用','Clear business data and start for real')}</button>
     ${DB.cloud?'':`<button class="bigbtn ghost" style="width:100%;margin-top:10px" onclick="confirmSheet(L('载入演示数据？','Load demo data?'),L('会用一套建材公司的演示数据替换现在的数据，仅供试用。','Replaces the current data with a sample building-materials company, for trying the app.'),L('载入','Load'),async()=>{await seedDemo();closeSheet(true);toast(L('已载入演示数据','Demo data loaded'),false);render(true)},false)">${L('载入演示数据（试用）','Load demo data (trial)')}</button>`}</div>`:''}
@@ -1613,7 +1661,7 @@ V.m_settings=()=>{const s=DB.get('settings','app')||{id:'app',co:{zh:'',en:''}};
     <div class="xs muted" style="margin-top:8px;line-height:1.6">${L('运费 = 计费量 × 单价。计费量取实际重量与体积重量中较大的：按立方米计时 1 立方米 = 1000 公斤；按公斤计时体积重量 = 体积 × 换算系数（海运 1000、空运 167、陆运 333、快递 200）。','Freight = chargeable quantity × unit price. The larger of actual weight and volume weight is charged: per m³, 1 m³ = 1000 kg; per kg, volume weight = volume × factor (sea 1000, air 167, road 333, express 200).')}</div>
     <div class="box" style="margin:12px 0 0;background:var(--soft);padding:12px"><b class="sm">${L('试算','Try it')}</b><div class="row gap" style="margin-top:8px"><div style="flex:1"><div class="xs muted">${L('重量（公斤）','Weight (kg)')}</div><input class="inp" id="frKg" type="number" inputmode="decimal" value="${S.frKg||500}" style="background:var(--card)" oninput="S.frKg=this.value;frTry()"></div><div style="flex:1"><div class="xs muted">${L('体积（立方米）','Volume (m³)')}</div><input class="inp" id="frCbm" type="number" inputmode="decimal" value="${S.frCbm||2}" style="background:var(--card)" oninput="S.frCbm=this.value;frTry()"></div></div><div id="frOut" style="margin-top:8px">${Object.keys(MODES).map(k=>frLine(k,S.frKg||500,S.frCbm||2)).join('')}</div></div></div></div>`};
 
-async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co,expLimit:Math.max(0,+$('#stEL').value||1000),workStart:Math.min(23,Math.max(0,+$('#stWS').value||9))});toast(L('已保存','Saved'),false);render(false)}
+async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co,expLimit:2000,workStart:Math.min(23,Math.max(0,+$('#stWS').value||9))});toast(L('已保存','Saved'),false);render(false)}
 function resetSheet(){openSheet(`<div class="sh red">${L('清空业务数据','Clear business data')}</div><div class="sm" style="margin-top:8px;line-height:1.7">${L('所有商品、分类、客户、供应商、单据、库存、财务和物流记录都会被删除，不能恢复。其他部门的手机也会同步清空。请输入 <b>清空</b> 两个字确认。','All items, categories, customers, suppliers, documents, stock, finance and logistics records are deleted and cannot be restored. Other phones are cleared too. Type <b>CLEAR</b> to confirm.')}</div>
   <input class="inp" id="rsT" style="background:var(--card);margin-top:12px" autocomplete="off"><div class="sm red" id="rsE" style="margin-top:8px"></div>
   <button class="bigbtn" style="width:100%;margin-top:12px;background:var(--red);color:#fff" onclick="doReset()">${L('确认清空','Clear now')}</button>`)}
@@ -1673,7 +1721,7 @@ async function boot(){
   if(!['zh','en'].includes(S.lang))await Promise.race([ensureLang(S.lang),new Promise(r=>setTimeout(r,4000))]);
   S.online=navigator.onLine;
   if(restoreSession()){S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first()}else S.view='login';
-  render(true);Sync.start();if(S.me)Sync.run('boot');
+  render(true);Sync.start();if(S.me){Sync.run('boot');bindPushRegistration()}
   /* 更新完成后，告诉用户更新了什么（只显示一次） */
   const from=LS.get('updFrom',null);if(from&&from!==APP_VER){LS.set('updFrom',null);setTimeout(async()=>{let v=null;try{v=await (await fetch('version.json?t='+Date.now(),{cache:'no-store'})).json()}catch(e){}
     openSheet(`<div class="sh">✓ ${L('已更新到','Updated to')} v${APP_VER}</div>${v&&v.version===APP_VER?updNotes(v):''}<button class="bigbtn" style="width:100%;margin-top:18px" onclick="closeSheet()">${L('好的','OK')}</button>`)},600)}

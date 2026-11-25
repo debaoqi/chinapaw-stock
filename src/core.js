@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.6.0',APP_BUILD=14;
+const APP_VER='1.8.0',APP_BUILD=16;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -90,7 +90,9 @@ const dayStart=(t=Date.now())=>{const d=new Date(t);d.setHours(0,0,0,0);return +
 /* ---------- 职能部门与权限：各司其职、互不越界 ----------
    每个部门有固定的“部门代码”（也是初始密码）；新增同部门账号用“代码-序号”，如 444444-1 = 第 2 个仓库主管账号。 */
 const ROLES={
- gm:{zh:'总经理',en:'General Manager',code:'111111',c:'b-dark',p:'*'},
+ chair:{zh:'董事长',en:'Chairman',code:'111111',c:'b-dark',p:'*'},
+ gm:{zh:'总经理',en:'General Manager',code:'111112',c:'b-dark',p:'*'},
+ clerk:{zh:'内勤',en:'Office Clerk',code:'999999',c:'b-blue',p:['stock','docs_view','po_prepare','grn_check','att']},
  buyer:{zh:'采购主管',en:'Purchasing Manager',code:'222222',c:'b-blue',p:['stock','po','pr','logi','report','cost','sup']},
  sales:{zh:'销售经理',en:'Sales Manager',code:'333333',c:'b-gold',p:['stock','so','sr','logi','report','cus']},
  keeper:{zh:'仓库主管',en:'Warehouse Manager',code:'444444',c:'b-green',p:['stock','po_recv','so_ship','take','pr_exec','sr_exec','logi','report']},
@@ -104,14 +106,16 @@ const ROLES={
    so_fin 销售单财务审核（确认收款 / 赊账初审）· tk_fin 盘点财务复核 · tk_final 盘点终审（运营经理 / 总经理）
    exp_approve 特殊费用审批（总经理 / 运营经理）· exp_book 费用入账（会计）· 付费用由出纳（fin_pay） */
 ROLES.sales.p.push('att_view');['buyer','sales','keeper','acct','cashier'].forEach(r=>{if(!ROLES[r].p.includes('att'))ROLES[r].p.push('att')});ROLES.acct.p.push('so_fin','tk_fin','exp_book');
-const ROLE_ORDER=['gm','ops','buyer','sales','field','keeper','acct','cashier'];
-function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+ROLES.ops.p.push('fin_approve_ops');ROLES.buyer.p.push('po_prepare','docs_view');ROLES.keeper.p.push('po_prepare');ROLES.acct.p.push('grn_fin','docs_view');ROLES.cashier.p.push('so_fin','docs_view');
+ROLES.ops.p.push('att');
+const ROLE_ORDER=['chair','gm','ops','buyer','sales','field','keeper','acct','cashier','clerk'];
+function can(p,u){u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';if(p==='mgmt')return !!u&&(['chair','gm'].includes(u.role)||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_recv')return can('po_prepare',u)||can('po_recv',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 /* 职位本身的权限（不含总经理的“全部权限”）：财务复核、出纳付款等环节只属于对应职位，互相制约 */
-const own=(p,u)=>{u=u||S.me;const r=u&&ROLES[u.role];return !!r&&r.p!=='*'&&r.p.includes(p)};
+const own=(p,u)=>{u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';const r=u&&ROLES[u.role];return !!r&&r.p!=='*'&&r.p.includes(p)};
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
 /* 部门：每个部门有基本职位，也可以新增职位（新职位的权限参照本部门的一个基本职位） */
-const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['gm','ops']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales','field']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
+const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['chair','gm','ops']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer','clerk']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales','field']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
 const deptOf=r=>DEPTS.find(d=>d.roles.includes(r))||DEPTS[0];
 const deptName=d=>nm(typeof d==='string'?DEPTS.find(x=>x.id===d)||{zh:d,en:d}:d);
 /* 职位列表：登录后以公司设置为准（同时存一份到手机，供登录页使用）；登录页在云端模式下用刚从云端取到的列表 */
@@ -155,7 +159,7 @@ let BC=null;try{BC=new BroadcastChannel('jxc')}catch(e){}
 function bc(type,rows){try{BC&&BC.postMessage({type,rows})}catch(e){}}
 if(BC)BC.onmessage=e=>{const m=e.data||{};if(m.type==='chg'){const rows=(m.rows||[]).map(r=>({k:r.k,d:{...r.d,_q:0},force:true}));DB.merge(rows);onRemote(rows)}
   else if(m.type==='reset'){DB.load();if(window.render)render(false)}};
-function onRemote(rows){try{typeof Alerts!=='undefined'&&Alerts.scan(rows)}catch(e){console.error(e)}if(window.softRender)softRender()}
+function onRemote(rows){try{typeof Alerts!=='undefined'&&Alerts.scan(rows)}catch(e){console.error(e)}if(window.softRender)softRender();if(window.updateUnreadBadge)updateUnreadBadge()}
 
 /* 云端（Supabase）：所有读写都走 RPC 函数，便于权限控制（与 ChinaPaw 相同的安全原则） */
 /* 云端是否已启用：数据库脚本未运行时（函数不存在）自动用本机模式，运行后自动切换到云端 */
@@ -166,6 +170,7 @@ async function cloudProbe(){if(!DB.cloud)return;const k='cloudOK';let ok=LS.get(
 async function rpc(fn,args){const r=await fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
    headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(args||{})});
   const tx=await r.text();if(!r.ok){let m=tx;try{m=JSON.parse(tx).message||tx}catch(e){}throw new Error(m)}return tx?JSON.parse(tx):null}
+function acceptCloudUsers(users){const changed=JSON.stringify(DB.d.users)!==JSON.stringify(users);DB.d.users=users;if(changed)DB.ver++;if(S.me){const me=users.find(u=>u.id===S.me.id);if(me){S.me={...me};const sess=LS.get(SK,null);if(sess){sess.me=S.me;LS.set(SK,sess)}}}}
 const Sync={timer:null,
   async run(force){
     if(S.syncing){S.syncAgain=true;return}if(!navigator.onLine){S.online=false;window.syncUI&&syncUI();return}
@@ -180,13 +185,21 @@ const Sync={timer:null,
         const p=await rpc('jxc_pull',{p_token:S.token,p_since:DB.seq});
         if(p){const rows=(p.rows||[]).map(r=>({k:r.k,d:r.d,force:true}));const mine=new Set(DB.outbox.map(o=>o.k+o.id));
           const fresh=rows.filter(r=>!mine.has(r.k+r.d.id));DB.merge(fresh);DB.seq=p.seq||DB.seq;
-          if(p.users&&p.users.length)DB.d.users=p.users;if(fresh.length&&(force!=='boot'))onRemote(fresh.filter(r=>r.d.by!==S.me.id))}
+          if(p.users&&p.users.length)acceptCloudUsers(p.users);if(fresh.length){if(force==='boot'){try{Alerts.scan(fresh,false)}catch(e){console.error(e)}}else onRemote(fresh.filter(r=>r.d.by!==S.me.id))}}
       }else{
         /* 本机演示模式：联网时把暂存的单据“提交”（清空队列） */
         if(DB.outbox.length){const ks=new Set(DB.outbox.map(o=>o.k+o.id));DB.outbox=[];(KINDS).forEach(k=>DB.d[k].forEach(x=>{if(ks.has(k+x.id))delete x._q}))}
       }
       DB.lastSync=Date.now();DB.save();S.online=true;S.syncErr='';
-    }catch(e){console.error(e);S.syncErr=String(e.message||e);if(force===true)toast(L('同步失败：','Sync failed: ')+S.syncErr)}
+    }catch(e){console.error(e);S.syncErr=String(e.message||e);
+      if(DB.cloud&&S.token&&/Approval changed or permission denied/.test(S.syncErr)){
+        try{const match=S.syncErr.match(/(\[[^\]]*\])\s*$/),bad=new Set(match?JSON.parse(match[1]):[]);let changed=true;
+          while(changed){changed=false;DB.outbox.forEach(o=>{const links=[o.id,o.d.ref,o.d.po,o.d.so,o.d.grn].filter(Boolean);if(links.some(id=>bad.has(id)))links.forEach(id=>{if(!bad.has(id)){bad.add(id);changed=true}})})}
+          DB.outbox=DB.outbox.filter(o=>!bad.has(o.id));KINDS.forEach(k=>DB.d[k]=DB.d[k].filter(d=>!bad.has(d.id)));DB.seq=0;DB.ver++;
+          const p=await rpc('jxc_pull',{p_token:S.token,p_since:0});if(p){const mine=new Set(DB.outbox.map(o=>o.k+o.id));DB.merge((p.rows||[]).filter(r=>!mine.has(r.k+r.d.id)).map(r=>({...r,force:true})));DB.seq=p.seq||0;if(p.users)acceptCloudUsers(p.users)}
+          toast(L('审批状态已变更，相关操作未保存；已恢复云端记录，请重新核对','Approval changed; related changes were not saved. Server records restored; review again'));DB.save();
+        }catch(recovery){console.error(recovery)}
+      }else if(force===true)toast(L('同步失败：','Sync failed: ')+S.syncErr)}
     finally{S.syncing=false;window.syncUI&&syncUI();if(force===true&&!S.syncErr)toast(L('已同步','Synced'));
       /* 只有数据真的变了才刷新画面（原来每次后台同步都整页重画，造成闪动） */
       if(DB.ver!==v0&&window.softRender)softRender();if(S.syncAgain){S.syncAgain=false;setTimeout(()=>this.run(),30)}}},
@@ -223,6 +236,7 @@ const mvName=t=>L((MV[t]||[t,t])[0],(MV[t]||[t,t])[1]);
 
 /* ---------- 单据状态 ---------- */
 const PO_ST={draft:['草稿','Draft','b-grey'],ordered:['已下单','Ordered','b-blue'],received:['已入库','Received','b-green'],done:['已完成','Completed','b-dark'],cancel:['已取消','Cancelled','b-grey']};
+const GR_ST={submitted:['待财务审批','Finance review','b-gold'],fin_ok:['待内勤确认','Clerk review','b-gold'],ready:['待库管入库','Warehouse receipt','b-blue'],done:['已入库','Received','b-green'],rejected:['已驳回','Rejected','b-red']};
 const SO_ST={draft:['草稿','Draft','b-grey'],submitted:['待财务审核','Finance review','b-gold'],credit_gm:['赊账待总经理审批','Credit: GM review','b-gold'],approved:['待出库','To ship','b-blue'],rejected:['已驳回','Rejected','b-red'],shipped:['已出库','Shipped','b-blue'],done:['已完成','Completed','b-dark'],cancel:['已取消','Cancelled','b-grey']};
 const TK_ST={pending:['待财务复核','Finance review','b-gold'],fin_ok:['待运营 / 总经理终审','Final review','b-gold'],approved:['已审核','Approved','b-green'],rejected:['已驳回','Rejected','b-red']};
 const SH_ST={pending:['待揽收','Awaiting pickup','b-grey'],picked:['已揽收','Picked up','b-blue'],transit:['运输中','In transit','b-blue'],customs:['清关中','Customs','b-purple'],
@@ -356,7 +370,7 @@ async function login(pw,trust,role,uidSel){pw=String(pw||'').trim();const lk=LS.
   LS.set('lock',{n:0,until:0});LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
 function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;if(Date.now()-s.t>30*864e5)return false;S.me=s.me;S.token=s.token;
   if(!DB.cloud){const u=DB.get('users',S.me.id);if(!u||u.active===false)return false;S.me={...u};delete S.me.pw}return true}
-function logout(){if(DB.cloud&&S.token)rpc('jxc_logout',{p_token:S.token}).catch(()=>{});LS.del(SK);S.me=null;S.token=null}
+function logout(){const session=S.token;if(DB.cloud&&session){const drop=window.revokePushRegistration?revokePushRegistration(session):Promise.resolve();drop.finally(()=>rpc('jxc_logout',{p_token:session}).catch(()=>{}))}LS.del(SK);S.me=null;S.token=null;if(window.updateUnreadBadge)updateUnreadBadge(true)}
 async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:S.token,p_old:old,p_new:nw});return}
   const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
   if(String(nw).length<6)throw new Error(L('新密码至少 6 位','At least 6 characters'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
@@ -367,10 +381,10 @@ async function saveAccount(a,newPw){if(!can('mgmt'))throw new Error(L('没有后
   const role=ROLES[a.role]?a.role:(old?old.role:roleOfCode(a.code));
   if(!a.id&&!roleOfCode(a.code))throw new Error(L('账号代码格式：部门代码或“部门代码-序号”，如 444444-1','Code format: department code, or code-number such as 444444-1'));
   if(!role)throw new Error(L('请选择职位','Choose a position'));
-  if(S.me.role!=='gm'){if(role==='gm'||(old&&old.role==='gm'))throw new Error(L('总经理账号只能由总经理修改','Only the general manager can edit GM accounts'));a={...a,admin:old?!!old.admin:false}}
+  if(S.me.role!=='chair'){if(role==='chair'||(old&&old.role==='chair'))throw new Error(L('董事长账号只能由董事长修改','Only the chairman can edit chairman accounts'));a={...a,admin:old?!!old.admin:false}}
   if(old&&old.id===S.me.id&&role!==old.role)throw new Error(L('不能修改自己的职位','You cannot change your own position'));
-  if(old&&old.role==='gm'&&(role!=='gm'||a.active===false)&&!DB.all('users').some(u=>u.id!==old.id&&u.role==='gm'&&u.active!==false))throw new Error(L('至少要保留一个可登录的总经理','Keep at least one active general manager'));
-  if(role==='gm')a={...a,admin:false};
+  if(old&&old.role==='chair'&&(role!=='chair'||a.active===false)&&!DB.all('users').some(u=>u.id!==old.id&&u.role==='chair'&&u.active!==false))throw new Error(L('至少要保留一个可登录的董事长','Keep at least one active chairman'));
+  if(role==='chair')a={...a,admin:false};
   if(DB.cloud){const r=await rpc('jxc_admin_user',{p_token:S.token,p_user:{id:a.id||null,code:a.code,name:nmP(a.name),role,pos:a.pos||null,wh:a.wh,active:a.active!==false,admin:!!a.admin},p_pw:newPw||null});if(r&&r.users)DB.d.users=r.users;DB.ver++;return}
   if(!a.id&&DB.all('users').some(u=>u.code===a.code))throw new Error(L('这个账号代码已存在','This account code already exists'));
   if(a.id===S.me.id&&a.active===false)throw new Error(L('不能停用自己的账号','You cannot disable your own account'));
@@ -419,9 +433,9 @@ async function seedDemo(){
    {id:'C4',type:'cus',n:{zh:'夸梅装饰',en:'Kwame Decor'},phone:'027 333 4455',city:{zh:'库马西',en:'Kumasi'}},
    {id:'C5',type:'cus',n:{zh:'库马西建材城',en:'Kumasi Building Mart'},phone:'050 777 1212',city:{zh:'库马西',en:'Kumasi'}}];
   /* 部门账号：初始密码 = 部门代码（总经理 111111 … 出纳 666666），444444-1 是新增的第 2 个仓库主管 */
-  const U=[['U1','gm','111111',{zh:'孙总',en:'GM Sun'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
+  const U=[['U1','chair','111111',{zh:'孙总',en:'Chairman Sun'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
    ['U4','keeper','444444',{zh:'科乔·阿散蒂',en:'Kojo Asante'},'W1'],['U5','acct','555555',{zh:'陈会计',en:'Chen (Accounts)'},'W1'],['U6','cashier','666666',{zh:'阿贝娜',en:'Abena Owusu'},'W1'],
-   ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3'],['U8','field','777777',{zh:'夸梅（外勤）',en:'Kwame (Field)'},'W1'],['U9','ops','888888',{zh:'周运营',en:'Zhou (Operations)'},'W1']];
+   ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3'],['U8','field','777777',{zh:'夸梅（外勤）',en:'Kwame (Field)'},'W1'],['U9','ops','888888',{zh:'周运营',en:'Zhou (Operations)'},'W1'],['U10','clerk','999999',{zh:'内勤',en:'Office Clerk'},'W1'],['U11','gm','111112',{zh:'总经理',en:'General Manager'},'W1']];
   for(const u of U)d.users.push({id:u[0],role:u[1],code:u[2],name:u[3],wh:u[4],active:true,pw:await pwHash(u[0],u[2])});
   const mv=(o)=>d.moves.push({id:'dm'+d.moves.length,u:o.t,by:o.by||'U4',...o});
   const t0=now-34*D;const exp=(days)=>fday(now+days*D);
@@ -556,7 +570,7 @@ try{window.Capacitor&&window.Capacitor.Plugins.App&&window.Capacitor.Plugins.App
 /* ---------- 弹层 / 提示 ---------- */
 let SHEET_FORCE=false;
 function openSheet(h,force){SHEET_FORCE=!!force;const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+h;s.scrollTop=0;s.classList.add('on');$('#mask').classList.add('on');/* 弹层里的按钮文字放不下时自动缩小 */if(window.fitText){requestAnimationFrame(fitText);setTimeout(fitText,320)}}
-function closeSheet(really){if(SHEET_FORCE&&really!==true)return;SHEET_FORCE=false;$('#sheet').classList.remove('on');$('#mask').classList.remove('on');if(window._scanStop)_scanStop()}
+function closeSheet(really){if(SHEET_FORCE&&really!==true)return;SHEET_FORCE=false;const sh=$('#sheet');if(sh.contains(document.activeElement))document.activeElement.blur();const phone=sh.closest('.phone');if(phone)phone.scrollTop=0;sh.classList.remove('on');$('#mask').classList.remove('on');if(window._scanStop)_scanStop()}
 const sheetOn=()=>$('#sheet').classList.contains('on');
 function toast(m,bad){const t=$('#toast');if(!t)return;if(bad==null)bad=/失败|不足|未找到|不在|请|超过|错误|无法|failed|not |enter |choose |add at|exceed|wrong|cannot/i.test(m);t.innerHTML=ic(bad?'alert':'check',16)+'<span>'+esc(m)+'</span>';t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200)}
 function copyText(s){const ok=()=>toast(L('已复制：','Copied: ')+s);try{navigator.clipboard.writeText(s).then(ok,()=>fb())}catch(e){fb()}
@@ -578,11 +592,11 @@ const BIZ_KINDS=()=>KINDS.filter(k=>!['users','wh','settings'].includes(k));
 async function seedBlank(){const d={};KINDS.forEach(k=>d[k]=[]);const cc=(typeof C==='function'&&C())||{};
   d.settings=[{id:'app',base:cc.iso||'GHS',country:S.country||'GH',co:{zh:'',en:''},rates:{sea:[...FR_DEF.sea],air:[...FR_DEF.air],road:[...FR_DEF.road],express:[...FR_DEF.express]},lowRule:'min',plan:{limit:1},cats:[]},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'总店',en:'Main store'},city:{zh:'',en:''}}];
-  const U=[['U1','gm'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier'],['U8','field'],['U9','ops']];
+  const U=[['U1','chair'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier'],['U8','field'],['U9','ops'],['U10','clerk'],['U11','gm']];
   for(const [id,r] of U){const code=ROLES[r].code;d.users.push({id,role:r,code,name:{zh:ROLES[r].zh,en:ROLES[r].en},wh:'W1',active:true,pw:await pwHash(id,DEF_PW)})}
   KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save(true)}
 /* 清空业务数据（保留账号、门店、设置）。云端由服务器统一清空，其他手机同步 */
-async function resetData(){if(S.me.role!=='gm')throw new Error(L('只有总经理可以清空数据','Only the GM can clear data'));
+async function resetData(){if(S.me.role!=='chair')throw new Error(L('只有董事长可以清空数据','Only the GM can clear data'));
   if(DB.cloud){await rpc('jxc_reset',{p_token:S.token,p_confirm:'清空'});BIZ_KINDS().forEach(k=>DB.d[k]=[]);DB.outbox=DB.outbox.filter(o=>['users','wh','settings'].includes(o.k));await Sync.run(true)}
   else{BIZ_KINDS().forEach(k=>DB.d[k]=[]);DB.outbox=[]}
   const s=DB.get('settings','app')||{id:'app'};DB.put('settings',{...s,cats:[]});DB.ver++;DB.save(true);
