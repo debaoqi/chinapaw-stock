@@ -1,27 +1,25 @@
 {
-  "version": "1.8.0",
-  "build": 16,
+  "version": "1.9.0",
+  "build": 17,
   "date": "2026-11-25",
   "force": false,
-  "minNative": 6,
+  "minNative": 8,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "安装新版 APP 后支持后台消息提醒与未读图标（需允许通知）",
-      "原总经理调整为董事长，新增独立总经理职位",
-      "除董事长外全员拍照打卡，新增系统相机拍摄入口",
-      "群聊和业务通知未读图标提示，阅读后自动清除",
-      "保留 v1.7.0 的出库、赊销、采购入库和费用审批修复"
+      "董事长可执行财务、库管、出纳等操作；考勤08:30–17:00",
+      "新增请假、已读回执与客户拍照手写签收",
+      "库存服务器校验、出库固定成本及分批发货",
+      "历史成本待核对时仍可出库，相关利润暂不展示；财务扩展后续启用"
     ],
     "en": [
-      "Install the new Android app for background notifications and unread badges",
-      "Chairman and separate general manager roles",
-      "Photo check-in for all roles except chairman",
-      "Unread chat and business-notification badge",
-      "Includes the v1.7.0 workflow fixes"
+      "Chairman operational permissions; work hours 08:30–17:00",
+      "Leave requests, read receipts and photo/signature delivery evidence",
+      "Server stock controls, fixed shipment costs and partial dispatch",
+      "Legacy cost uncertainty no longer blocks shipment; affected profit is withheld. Accounting extensions remain disabled."
     ]
   }
 }
