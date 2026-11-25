@@ -1,6 +1,6 @@
 {
-  "version": "1.3.1",
-  "build": 10,
+  "version": "1.4.0",
+  "build": 11,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,22 +10,24 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "物流服务改为运费计算器：运费单价可用人民币报价（如海运每立方米 ¥1800，按实时汇率自动换算成赛地）+ 清关费（按台 / 个 / 票 / 柜）+ 其他费用 = 合计",
-      "付款凭证号随付款方式变化：现金填收据号，银行转账填流水号，手机钱包填交易号",
-      "空白开始：新客户打开后没有任何演示数据，首页有“开始使用”7 步清单（公司、门店、分类、商品+现有库存、供应商、客户、人员密码）",
-      "商品分类可自行新增、改名、删除（如摩托车、手机、配件），库存页按分类筛选；商品可删除，新增商品可直接录入现有库存",
-      "中文名称自动生成英文（门店、客户、供应商、商品、分类、职位、公司名称）",
-      "财务卡片重新排列：应收、应付并排，第三项改为整行长条，数字完整显示",
-      "总经理可在“系统设置 → 数据管理”清空业务数据开始正式使用；演示数据中的总经理改为孙总"
+      "底部导航改为 5 个：首页 · 工作台 · 消息（中间）· 本职常用 · 我的；图标与文字居中对齐（兼容旧手机）",
+      "企业沟通：全员群、自建群、私聊（只有成员能收到），自动翻译成每个人手机的语言；图片、拍照、位置、表情、@提醒、回复、2 分钟内撤回、未读提醒",
+      "新增职位：外勤人员（销售部）、运营经理（总经办）。外勤定位打卡 + 水印照片，总经理 / 销售经理 / 运营经理可查看，考勤统计可导出",
+      "出库审批：现款 = 业务员提交 → 财务确认收款 → 仓库出库；赊账 = 业务员提交 → 财务审核 → 总经理审批 → 仓库出库",
+      "盘点审批：库管盘点 → 财务复核 → 运营经理或总经理终审，互相制约；各环节云端也会检查",
+      "销售单可选运费由对方或我方承担；采购单可加运费、清关费、其他费用（可从运费计算器带入），计入到岸成本",
+      "费用报销：办公费、外勤报销等，特殊费用由总经理或运营经理审批后报备财务；费用统计按类别和人员，报表显示净利润",
+      "打印：销售单、出库单（送货签收）、入库单（到岸成本）"
     ],
     "en": [
-      "Freight calculator: price in RMB (e.g. sea ¥1800 per m³, converted at the live rate) + clearance fees (per unit / piece / shipment / container) + other fees = total",
-      "Payment reference follows the method: receipt no. for cash, bank reference for transfers, transaction ID for mobile money",
-      "Blank start: no demo data; the home page has a 7-step “Get started” checklist",
-      "Editable product categories (e.g. motorcycles, phones, parts) with a filter on the stock page; items can be deleted; new items can include current stock",
-      "English names are generated from Chinese names automatically",
-      "Finance tiles rearranged so every number shows in full",
-      "The GM can clear business data in Settings → Data to start for real"
+      "Bottom bar: 5 tabs with Chat in the middle; icons centred on all phones",
+      "Company chat: everyone group, custom groups, private chats, auto-translation, photos, location, emoji, @mentions, reply, recall",
+      "New positions: Field Sales and Operations Manager; GPS check-in with watermarked photo and attendance statistics",
+      "Shipping approval: cash = sales → finance confirms payment → warehouse; credit = sales → finance → GM → warehouse",
+      "Stock counts: warehouse → finance → operations / GM",
+      "Freight payer on sales orders; extra costs on purchase orders go into landed cost",
+      "Expense claims with special approval and statistics; net profit in reports",
+      "Printable sales order, delivery note and goods received note"
     ]
   }
 }

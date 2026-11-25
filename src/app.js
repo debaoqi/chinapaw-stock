@@ -3,8 +3,8 @@ const V={};
 const WEB=document.body.classList.contains('web'),ADMIN=document.body.classList.contains('admin');const LOGO=window.LOGO_DATA||'logo.svg';
 /* 每个页面需要的权限：没有权限直接回首页，部门之间不能越界 */
 const NEED={docs:'_docs',stock:'stock',product:'stock',po_new:'po',recv_pick:'po_recv',recv:'po_recv',pr_new:'pr',sr_new:'sr',so_new:'so',take:'take',fin:'fin',report:'report',logi:'logi',ship_view:'logi',ship_new:'logi',logi_svc:'logi',
-  mgmt:'mgmt',m_users:'mgmt',m_stores:'mgmt',m_products:'mgmt',m_partners:'_pt',m_settings:'mgmt',m_backup:'mgmt',m_log:'mgmt'};
-const LIVE=new Set(['home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
+  att:'att',att_stats:'att_view',exp_stats:'_exps',mgmt:'mgmt',m_users:'mgmt',m_stores:'mgmt',m_products:'mgmt',m_partners:'_pt',m_settings:'mgmt',m_backup:'mgmt',m_log:'mgmt'};
+const LIVE=new Set(['chat','work','att','att_stats','exp','exp_stats','home','stock','product','docs','po_view','so_view','take_view','logi','ship_view','report','msgs','me','recv_pick','fin','mgmt','m_users','m_stores','m_products','m_log']);
 const whName=id=>nm((DB.get('wh',id)||{}).n)||id||'';
 const ptName=id=>nmP((DB.get('partners',id)||{}).n)||'—';
 const P_=id=>DB.get('products',id)||{n:{zh:'已删除商品',en:'Deleted item'},unit:{zh:'',en:''}};
@@ -43,23 +43,24 @@ function fitText(){$$('#screen .hero,#screen .sc .t,#screen .stat .n,#screen .wt
 addEventListener('resize',()=>{clearTimeout(window._fz);window._fz=setTimeout(fitText,150)});
 let _soft=0;
 /* 后台刷新：只有数据真的变化（或翻译、汇率更新）时才重画；正在输入或打开弹层时不打断 */
-function softRender(force){if(!S.me&&!(force&&S.view==='login'))return;if(!force&&S.rv===DB.ver)return;const a=document.activeElement;
+function softRender(force){if(S.me&&S.view==='chat_room'){chatPaint();if(!force&&S.rv===DB.ver)return;S.rv=DB.ver;return}if(!S.me&&!(force&&S.view==='login'))return;if(!force&&S.rv===DB.ver)return;const a=document.activeElement;
   if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&$('#screen').contains(a))return;if(sheetOn()||!(LIVE.has(S.view)||S.view==='login'))return;
   clearTimeout(_soft);_soft=setTimeout(()=>{const t=$('#screen').scrollTop;render(false,true);$('#screen').scrollTop=t},120)}
 function todoCount(){let n=0;
-  if(can('so_ship'))n+=DB.all('so').filter(s=>s.status==='submitted').length;
+  if(can('so_ship'))n+=DB.all('so').filter(s=>s.status==='approved').length;
+  if(own('so_fin'))n+=DB.all('so').filter(s=>s.status==='submitted').length;
+  if(S.me&&S.me.role==='gm')n+=DB.all('so').filter(s=>s.status==='credit_gm').length;
+  if(own('tk_fin'))n+=DB.all('counts').filter(c=>c.status==='pending').length;if(can('tk_final'))n+=DB.all('counts').filter(c=>c.status==='fin_ok').length;
   if(can('po_recv'))n+=DB.all('po').filter(p=>p.status==='ordered').length;
-  if(S.me&&S.me.role==='gm')n+=DB.all('counts').filter(c=>c.status==='pending').length;
+
   if(can('pr_exec'))n+=DB.all('pr').filter(r=>r.status==='pending').length;if(can('sr_exec'))n+=DB.all('sr').filter(r=>r.status==='pending').length;return n}
 /* 底部导航：按部门显示各自的功能（网页版显示在左侧） */
-function TABS(){const t=[['home','home',L('首页','Home')]];
-  if(can('stock'))t.push(['stock','box',L('库存','Stock')]);
-  if(can('po')||can('so')||can('po_recv')||can('so_ship')||can('take'))t.push(['docs','doc',L('单据','Orders')]);
-  if(can('fin'))t.push(['fin','calc',L('财务','Finance')]);
-  if(can('logi'))t.push(['logi','truck',L('物流','Logistics')]);
-  t.push(['me','user',L('我的','Me')]);return t}
+/* 底部导航：每个职位最多 5 个，“消息”固定在中间；其余功能都在“工作台” */
+function TABS(){if(!S.me)return [];const r=S.me.role;const P={gm:['fin','calc',L('财务','Finance')],ops:['report','chart',L('报表','Reports')],buyer:['stock','box',L('库存','Stock')],sales:['docs','doc',L('单据','Orders')],
+   field:['att','pin',L('打卡','Check-in')],keeper:['stock','box',L('库存','Stock')],acct:['fin','calc',L('财务','Finance')],cashier:['fin','calc',L('财务','Finance')]}[r]||['docs','doc',L('单据','Orders')];
+  return [['home','home',L('首页','Home')],['work','grid',L('工作台','Work')],['chat','chat',L('消息','Chat')],P,['me','user',L('我的','Me')]]}
 function tnav(){const v=S.view;const b=n=>n?`<span class="cnt">${n>99?'99+':n}</span>`:'';
-  const cnt={docs:todoCount(),fin:finTodo(),logi:DB.all('ships').filter(s=>s.status==='exception').length,me:Alerts.unread()};
+  const cnt={docs:todoCount(),fin:finTodo(),work:todoCount()+expTodo(),chat:chatUnread(),me:Alerts.unread()};
   let h=TABS().map(([k,icon,label])=>`<button class="${v===k?'on':''}" onclick="tab('${k}')" aria-label="${esc(label)}"><span class="ti">${ic(icon,22)}${b(cnt[k])}</span><span class="tl">${label}</span></button>`).join('');
   if(WEB){h=`<div class="wbrand"><img class="logo" src="${LOGO}" alt=""><b class="one">${BRAND()}</b></div>`+h+
     [can('report')?['report','chart',L('简易报表','Reports')]:null,['msgs','bell',L('消息','Messages')],can('mgmt')?['mgmt','gear',L('后台管理','Management')]:null].filter(Boolean).map(([k,icon,label])=>`<button class="${v===k||(k==='mgmt'&&v.startsWith('m_'))?'on':''}" onclick="tab('${k}')"><span class="ti">${ic(icon,22)}${k==='msgs'?b(Alerts.unread()):''}</span><span class="tl">${label}</span></button>`).join('')+
@@ -89,13 +90,21 @@ const Alerts={
   prefs(){return Object.assign({order:true,low:true,ship:true,logi:true,fin:true},LS.get('prefs_'+(S.me&&S.me.id),{}))},
   add(n,show,t){const a=this.list();if(n.key&&a.some(x=>x.key===n.key))return;n.id=uid('n');n.t=n.t||Date.now();a.unshift(n);this.save(a);if(show)banner(n)},
   scan(rows,show=true){if(!S.me)return;const pf=this.prefs();
-    rows.forEach(({k,d})=>{if(d.by===S.me.id)return;const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};
-      if(k==='so'&&d.status==='submitted'&&can('so_ship')&&pf.order)self.add({key:'so'+d.id+'s',ic:'cart',c:'var(--gold)',zh:`新订单 ${d.no} 待出库 · ${pnL(d.cus,'zh')}`,en:`New order ${d.no} to ship · ${pnL(d.cus,'en')}`,go:['so_view',{id:d.id}]},show);
-      if(k==='so'&&d.status==='submitted'&&!can('so_ship')&&can('so')&&pf.order)self.add({key:'so'+d.id+'n',ic:'cart',c:'var(--gold)',zh:`同事提交了销售单 ${d.no}`,en:`Sales order ${d.no} submitted`,go:['so_view',{id:d.id}]},show);
+    rows.forEach(({k,d})=>{if(d.by===S.me.id)return;
+      if(k==='att'&&can('att_view')&&d.by!==S.me.id)self.add({key:'at'+d.id,ic:'pin',c:'var(--gold)',zh:`${userName(d.by)} ${ATT_T[d.type][0]} · ${d.addr||''}`,en:`${userName(d.by)} ${ATT_T[d.type][1]} · ${d.addr||''}`,go:['att_stats',{}]},show&&d.type!=='visit');
+      if(k==='msg'){if(show&&!d.rc&&(!d.mem||d.mem.includes(S.me.id))&&!(S.view==='chat_room'&&S.chId===d.ch)&&Date.now()-d.t<60e3){const c=chGet(d.ch);const at=(d.at||[]).includes(S.me.id)||(d.at||[]).includes('all');
+        const txt=(c&&c.type!=='dm'?chName(c)+' · ':'')+userName(d.by)+'：'+(d.img?L('[图片]','[Photo]'):d.loc?L('[位置]','[Location]'):d.text);banner({ic:'chat',c:at?'var(--red)':'var(--green)',zh:(at?'[有人@你] ':'')+txt,en:(at?'[Mentioned] ':'')+txt,go:['chat_room',{ch:d.ch}]})}return}const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};
+      if(k==='so'&&d.status==='submitted'&&own('so_fin'))self.add({key:'so'+d.id+'f'+(d.u||''),ic:'calc',c:'var(--purple)',zh:`销售单 ${d.no} 待财务审核（${d.pay==='credit'?'赊账':'现款'}）· ${pnL(d.cus,'zh')}`,en:`Order ${d.no} needs finance review (${d.pay==='credit'?'credit':'cash'})`,go:['so_view',{id:d.id}]},show);
+      if(k==='so'&&d.status==='credit_gm'&&S.me.role==='gm')self.add({key:'so'+d.id+'g',ic:'calc',c:'var(--red)',zh:`赊账销售单 ${d.no} 待您审批 · ${pnL(d.cus,'zh')}`,en:`Credit order ${d.no} needs your approval`,go:['so_view',{id:d.id}]},show);
+      if(k==='so'&&d.status==='rejected'&&d.by===S.me.id)self.add({key:'so'+d.id+'r'+(d.u||''),ic:'x',c:'var(--red)',zh:`销售单 ${d.no} 被驳回：${d.rj||''}`,en:`Order ${d.no} rejected: ${d.rj||''}`,go:['so_view',{id:d.id}]},show);
+      if(k==='so'&&d.status==='approved'&&can('so_ship')&&pf.order)self.add({key:'so'+d.id+'s',ic:'cart',c:'var(--gold)',zh:`销售单 ${d.no} 已审核，待出库 · ${pnL(d.cus,'zh')}`,en:`Order ${d.no} approved — ready to ship · ${pnL(d.cus,'en')}`,go:['so_view',{id:d.id}]},show);
+      if(k==='so'&&d.status==='approved'&&d.by===S.me.id&&pf.order)self.add({key:'so'+d.id+'ok',ic:'check',c:'var(--green)',zh:`销售单 ${d.no} 已审核通过，仓库将出库`,en:`Order ${d.no} approved — the warehouse will ship`,go:['so_view',{id:d.id}]},show);
+      if(false)self.add({key:'so'+d.id+'n',ic:'cart',c:'var(--gold)',zh:`同事提交了销售单 ${d.no}`,en:`Sales order ${d.no} submitted`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='shipped'&&can('so')&&pf.ship)self.add({key:'so'+d.id+'x',ic:'out',c:'var(--blue)',zh:`销售单 ${d.no} 已出库发货`,en:`Order ${d.no} has shipped`,go:['so_view',{id:d.id}]},show);
       if(k==='po'&&d.status==='ordered'&&can('po_recv')&&pf.ship)self.add({key:'po'+d.id+'o',ic:'in',c:'var(--green)',zh:`采购单 ${d.no} 已下单，到货后请入库`,en:`PO ${d.no} ordered — receive on arrival`,go:['po_view',{id:d.id}]},show);
-      if(k==='counts'&&d.status==='pending'&&S.me.role==='gm')self.add({key:'tk'+d.id,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} 待审核`,en:`Stock count ${d.no} awaiting review`,go:['take_view',{id:d.id}]},show);
-      if(k==='counts'&&d.status!=='pending'&&d.by===S.me.id)self.add({key:'tk'+d.id+d.status,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} ${d.status==='approved'?'已审核通过':'被驳回'}`,en:`Stock count ${d.no} ${d.status}`,go:['take_view',{id:d.id}]},show);
+      if(k==='counts'&&d.status==='fin_ok'&&can('tk_final'))self.add({key:'tk'+d.id+'f',ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} 财务已复核，待终审`,en:`Stock count ${d.no} awaiting final approval`,go:['take_view',{id:d.id}]},show);
+      if(k==='counts'&&d.status==='pending'&&own('tk_fin'))self.add({key:'tk'+d.id,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} 待审核`,en:`Stock count ${d.no} awaiting review`,go:['take_view',{id:d.id}]},show);
+      if(k==='counts'&&['approved','rejected'].includes(d.status)&&d.by===S.me.id)self.add({key:'tk'+d.id+d.status,ic:'clip',c:'var(--purple)',zh:`盘点单 ${d.no} ${d.status==='approved'?'已审核通过':'被驳回'}`,en:`Stock count ${d.no} ${d.status}`,go:['take_view',{id:d.id}]},show);
       if(k==='ships'&&pf.logi&&can('logi'))self.add({key:'sh'+d.id+d.status,ic:'truck',c:d.status==='exception'?'var(--red)':'var(--blue)',zh:`物流 ${d.trackNo||d.no}：${SH_ST[d.status][0]}`,en:`Shipment ${d.trackNo||d.no}: ${SH_ST[d.status][1]}`,go:['ship_view',{id:d.id}]},show);
       if(k==='pr'&&d.status==='pending'&&can('pr_exec'))self.add({key:'pr'+d.id,ic:'out',c:'var(--orange)',zh:`采购退货 ${d.no} 待出库`,en:`Supplier return ${d.no} to ship out`,go:['docs',{}]},show);
       if(k==='sr'&&d.status==='pending'&&can('sr_exec'))self.add({key:'sr'+d.id,ic:'in',c:'var(--purple)',zh:`销售退货 ${d.no} 待收货`,en:`Customer return ${d.no} to receive`,go:['docs',{}]},show);
@@ -116,7 +125,7 @@ function banner(n){const b=$('#banner');if(!b)return;b.innerHTML=`<div class="qi
 function markRead(id){const a=Alerts.list();a.forEach(n=>{if(!id||n.id===id)n.read=true});Alerts.save(a)}
 
 /* ================= 登录：只输入密码（不需要手机号），系统按密码识别部门与账号 ================= */
-const ROLE_COLOR={gm:'#161616',buyer:'#2367B0',sales:'#F2B705',keeper:'#0B7A4B',acct:'#7B4FA0',cashier:'#E87A2B'};
+const ROLE_COLOR={gm:'#161616',ops:'#3D4A5C',buyer:'#2367B0',sales:'#F2B705',field:'#C98E00',keeper:'#0B7A4B',acct:'#7B4FA0',cashier:'#E87A2B'};
 /* 登录：① 部门 → ② 职位（本部门的基本职位 + 后台新增的职位）→ ③ 密码 */
 const lgTitle=()=>{const p=S.lgPos&&posById(S.lgPos);return p?nm(p.n):roleName(S.lgRole)};
 const lgOpts=d=>[...d.roles.map(r=>({r,p:null,n:roleName(r)})),...positions().filter(p=>!p.del&&p.dept===d.id&&d.roles.includes(p.role)).map(p=>({r:p.role,p:p.id,n:nm(p.n)}))];
@@ -149,14 +158,14 @@ const tile=(bg,icon,t,sub,fn)=>`<div class="wtile" style="background:${bg}" oncl
 const statT=(cls,val,label,fn,cur)=>`<div class="stat ${cls}" onclick="${fn||''}"><div class="n" data-notr>${val}</div><div class="l">${label}</div></div>`;
 V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   const soT=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=today);const sales=soT.reduce((a,s)=>a+docTotal(s),0);
-  const toShip=DB.all('so').filter(s=>s.status==='submitted').length,toRecv=DB.all('po').filter(p=>p.status==='ordered').length;
+  const toShip=DB.all('so').filter(s=>s.status==='approved').length,toRecv=DB.all('po').filter(p=>p.status==='ordered').length;
   const low=DB.all('products').filter(p=>['low','out'].includes(stStatus(p))).length;
   const ships=DB.all('ships');const transit=ships.filter(s=>['picked','transit','customs'].includes(s.status)).length,deliv=ships.filter(s=>s.status==='delivering').length,exc=ships.filter(s=>s.status==='exception').length;
   const F=finSum();const big=[],tiles=[];let stats='';
   if(r==='gm'||r==='sales'){if(can('so'))big.push(bigCard('var(--gold)','#161616','cart',L('销售开单','New sale'),L('选客户 → 扫码加商品 → 自动算金额','Customer → scan items → auto total'),"go('so_new')"))}
   if(r==='buyer')big.push(bigCard('var(--green)','#fff','in',L('采购下单','New purchase'),L('选供应商 → 加商品 → 提交下单','Supplier → items → place order'),"go('po_new')"));
   if(r==='keeper'){big.push(bigCard('var(--green)','#fff','in',L('采购入库','Receive goods'),L('选订单 → 填数量 → 扫码核对','Pick PO → quantities → scan check'),"go('recv_pick')"));
-    big.push(bigCard('var(--gold)','#161616','out',L('销售出库','Ship orders'),L(`${toShip} 张待出库 · 确认发货扣库存`,`${toShip} to ship · confirm & deduct`),"S.docSeg='so';S.docF='submitted';tab('docs')"))}
+    big.push(bigCard('var(--gold)','#161616','out',L('销售出库','Ship orders'),L(`${toShip} 张待出库 · 确认发货扣库存`,`${toShip} to ship · confirm & deduct`),"S.docSeg='so';S.docF='approved';tab('docs')"))}
   if(r==='acct'){big.push(bigCard('var(--purple)','#fff','calc',L('财务对账','Accounts'),L('应收 · 应付 · 收款核对 · 付款申请','Receivables · payables · checks · payment requests'),"S.finSeg='ar';tab('fin')"));
     big.push(bigCard('var(--green)','#fff','chart',L('利润报表','Profit report'),L('销售额 · 成本 · 毛利','Sales · cost · gross profit'),"go('report')"))}
   if(r==='cashier'){big.push(bigCard('var(--green)','#fff','in',L('登记收款','Record receipt'),L('现金 / 银行 / 手机钱包','Cash / bank / mobile money'),"S.finSeg='ar';tab('fin')"));
@@ -168,18 +177,20 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
   if(r==='cashier'){tiles.push(tile('var(--blue)','doc',L('资金日记账','Cash book'),L('收付款流水 · 余额','Receipts, payments, balance'),"S.finSeg='book';tab('fin')"))}
   if(r==='gm')tiles.push(tile('var(--blue)','chart',L('经营报表','Reports'),L('销售 · 利润 · 排行','Sales · profit · ranking'),"go('report')"));
   if(tiles.length%2)tiles.push(can('report')?tile('var(--purple)','chart',L('简易报表','Reports'),L('销售额 · 排行 · 流水','Sales · ranking · log'),"go('report')"):tile('var(--purple)','bell',L('消息','Messages'),L('提醒与待办','Alerts & tasks'),"go('msgs')"));
-  if(r==='gm'||r==='sales')stats=statT('g',numK(sales),L('今日销售额','Sales today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='submitted';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
+  if(r==='gm'||r==='sales')stats=statT('g',numK(sales),L('今日销售额','Sales today'),"go('report')",1)+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='buyer')stats=statT('g',DB.all('po').filter(p=>p.status==='ordered').length,L('在途采购','Open POs'),"S.docSeg='po';S.docF='ordered';tab('docs')")+statT('',transit,L('物流在途','In transit'),"tab('logi')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
-  else if(r==='keeper')stats=statT('g',toRecv,L('待入库','To receive'),"go('recv_pick')")+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='submitted';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
+  else if(r==='keeper')stats=statT('g',toRecv,L('待入库','To receive'),"go('recv_pick')")+statT('',toShip,L('待出库','To ship'),"S.docSeg='so';S.docF='approved';tab('docs')")+statT(low?'y':'',low,L('库存不足','Low stock'),"S.stF='low';tab('stock')");
   else if(r==='acct')stats=statT('g',numK(F.arBal),L('应收余额','Receivable'),"S.finSeg='ar';tab('fin')",1)+statT('',numK(F.apBal),L('应付余额','Payable'),"S.finSeg='ap';tab('fin')")+statT(F.unverN?'y':'',F.unverN,L('待核对收款','To verify'),"S.finSeg='book';tab('fin')");
   else stats=statT('g',numK(F.rcvToday),L('今日收款','Received today'),"S.finSeg='book';tab('fin')",1)+statT(F.apprN?'y':'',F.apprN,L('待付款','To pay'),"S.finSeg='ap';tab('fin')")+statT('',numK(F.payMonth),L('本月付款','Paid this month'),"S.finSeg='book';tab('fin')");
   const todo=[];
-  if(can('so_ship')&&toShip&&r!=='keeper')todo.push(['out',L(`${toShip} 张销售单待出库`,`${toShip} order(s) to ship`),"S.docSeg='so';S.docF='submitted';tab('docs')",'var(--gold)']);
+  if(can('so_ship')&&toShip&&r!=='keeper')todo.push(['out',L(`${toShip} 张销售单待出库`,`${toShip} order(s) to ship`),"S.docSeg='so';S.docF='approved';tab('docs')",'var(--gold)']);
   if(can('po_recv')&&toRecv&&r!=='keeper')todo.push(['in',L(`${toRecv} 张采购单待入库`,`${toRecv} PO(s) to receive`),"go('recv_pick')",'var(--green)']);
   const prP=DB.all('pr').filter(x=>x.status==='pending').length,srP=DB.all('sr').filter(x=>x.status==='pending').length;
   if(can('pr_exec')&&prP)todo.push(['out',L(`${prP} 张采购退货待出库`,`${prP} supplier return(s) to ship out`),"S.docSeg='ret';tab('docs')",'var(--orange)']);
   if(can('sr_exec')&&srP)todo.push(['in',L(`${srP} 张销售退货待收货`,`${srP} customer return(s) to receive`),"S.docSeg='ret';tab('docs')",'var(--purple)']);
-  const tk=DB.all('counts').filter(c=>c.status==='pending').length;if(r==='gm'&&tk)todo.push(['clip',L(`${tk} 张盘点单待审核`,`${tk} stock count(s) to review`),"S.docSeg='take';tab('docs')",'var(--purple)']);
+  const tk=DB.all('counts').filter(c=>(c.status==='pending'&&own('tk_fin'))||(c.status==='fin_ok'&&can('tk_final'))).length;if(tk)todo.push(['clip',L(`${tk} 张盘点单待审核`,`${tk} stock count(s) to review`),"S.docSeg='take';tab('docs')",'var(--purple)']);
+  const sf=DB.all('so').filter(s=>s.status==='submitted').length;if(own('so_fin')&&sf)todo.unshift(['calc',L(`${sf} 张销售单待财务审核（收款 / 赊账）`,`${sf} sales order(s) for finance review`),"S.docSeg='so';S.docF='submitted';tab('docs')",'var(--purple)']);
+  const sg=DB.all('so').filter(s=>s.status==='credit_gm').length;if(r==='gm'&&sg)todo.unshift(['calc',L(`${sg} 张赊账销售单待您审批`,`${sg} credit order(s) need your approval`),"S.docSeg='so';S.docF='credit_gm';tab('docs')",'var(--red)']);
   if(can('fin_verify')&&F.unverN)todo.push(['check',L(`${F.unverN} 笔收款待核对`,`${F.unverN} receipt(s) to verify`),"S.finSeg='book';tab('fin')",'var(--purple)']);
   if(r==='gm'&&F.reqN)todo.unshift(['calc',L(`${F.reqN} 笔付款申请待您审批`,`${F.reqN} payment request(s) to review`),"payReview()",'var(--gold)']);
   if(r==='acct'&&F.rejN)todo.push(['x',L(`${F.rejN} 笔付款申请被驳回，待处理`,`${F.rejN} rejected payment request(s)`),"S.finSeg='ap';tab('fin')",'var(--red)']);
@@ -203,6 +214,279 @@ V.home=()=>{const me=S.me,r=me.role;const today=dayStart();
    ${mv.length?`<div class="sec-h">${L('最近出入库','Recent movements')}${can('report')?`<a onclick="go('report')">${L('报表','Reports')} ›</a>`:''}</div><div class="box" style="margin-top:0;padding:4px 16px">${mv.map(mvRow).join('')}</div>`:''}
   </div>`};
 /* 总经理：各部门进展一目了然 */
+/* ===== 企业沟通：全公司群 + 自建群 + 私聊（只有成员能收到），消息自动翻译成每个人手机的语言 ===== */
+const CH_ALL='C_all';
+const meId=()=>S.me&&S.me.id;
+function chList(){const me=meId();const l=DB.all('chat').filter(c=>!c.mem||c.mem.includes(me));if(!l.some(c=>c.id===CH_ALL))l.unshift({id:CH_ALL,type:'all',mem:null,t:0});return l}
+function chGet(id){return id===CH_ALL?(DB.get('chat',CH_ALL)||{id:CH_ALL,type:'all',mem:null,t:0}):DB.get('chat',id)}
+function chName(c){if(!c)return '';if(c.type==='all')return (nm((DB.get('settings','app')||{}).co)||L('全公司','Company'))+L(' · 全员群',' · everyone');
+  if(c.type==='dm'){const o=(c.mem||[]).find(x=>x!==meId())||meId();return userName(o)}return nm(c.n)||L('群聊','Group')}
+function chMsgs(id){return DB.all('msg').filter(m=>m.ch===id).sort((a,b)=>a.t-b.t)}
+const chRead=()=>LS.get('rd_'+meId(),{});
+function chUnreadOf(id){const r=chRead()[id]||0;return DB.all('msg').filter(m=>m.ch===id&&m.by!==meId()&&m.t>r&&!m.rc).length}
+function chatUnread(){if(!S.me)return 0;return chList().reduce((a,c)=>a+chUnreadOf(c.id),0)}
+function chMarkRead(id){const r=chRead();const last=chMsgs(id).slice(-1)[0];r[id]=Math.max(r[id]||0,last?last.t:Date.now());LS.set('rd_'+meId(),r)}
+function chMemNames(c){return c.mem?c.mem.map(u=>userName(u)).join('、'):L('全体同事','Everyone')}
+const avatar=(uid,sz=36)=>{const u=DB.get('users',uid)||{};const n=nmP(u.name)||'?';return `<div class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px;flex:none;background:${ROLE_COLOR[u.role]||'#888'};color:#fff">${esc(n.slice(0,1))}</div>`};
+/* 翻译：按阅读者的语言显示译文（缓存，不重复请求） */
+const CTRC=new Map(Object.entries(LS.get('ctr',{})));let _trSave=0;
+function chTr(text){const key=S.lang+'|'+text;if(CTRC.has(key))return CTRC.get(key);CTRC.set(key,null);
+  const tl=S.lang==='zh'?'zh-CN':S.lang;fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl='+encodeURIComponent(tl)+'&dt=t&q='+encodeURIComponent(text)).then(r=>r.json()).then(j=>{
+    const src=(j[2]||'').toLowerCase(),out=(j[0]||[]).map(x=>x[0]).join('').trim();const same=src.split('-')[0]===tl.split('-')[0]||!out||out===text;CTRC.set(key,same?'':out);
+    clearTimeout(_trSave);_trSave=setTimeout(()=>{const o={};[...CTRC.entries()].slice(-400).forEach(([k,v])=>{if(v!==null)o[k]=v});LS.set('ctr',o)},800);chatPaint()}).catch(()=>CTRC.set(key,''));return null}
+V.chat=()=>{const l=chList().map(c=>({c,last:chMsgs(c.id).slice(-1)[0],n:chUnreadOf(c.id)})).sort((a,b)=>(b.c.id===CH_ALL)-(a.c.id===CH_ALL)||((b.last||{}).t||b.c.t||0)-((a.last||{}).t||a.c.t||0));
+  const prev=m=>!m?L('还没有消息','No messages yet'):m.rc?L('撤回了一条消息','recalled a message'):(m.by===meId()?'':userName(m.by)+'：')+(m.img?L('[图片]','[Photo]'):m.loc?L('[位置]','[Location]'):esc(m.text||''));
+  const others=DB.all('users').filter(u=>u.id!==meId()&&u.active!==false);
+  return `<div class="pad" style="padding-top:16px"><div class="row between"><div class="ptitle">${L('消息','Chat')}</div><div class="row gap6"><button class="pill w" onclick="grpSheet()">${ic('users',16)} ${L('发起群聊','New group')}</button></div></div>
+   <div class="box" style="margin-top:12px;padding:4px 16px">${l.map(({c,last,n})=>`<div class="li" onclick="go('chat_room',{ch:'${c.id}'})">${c.type==='dm'?avatar((c.mem||[]).find(x=>x!==meId())||meId(),44):`<div class="av" style="width:44px;height:44px;flex:none;background:${c.type==='all'?'var(--green)':'var(--blue)'};color:#fff">${ic(c.type==='all'?'home':'users',20)}</div>`}
+     <div style="flex:1;min-width:0"><div class="row between" style="gap:8px"><b class="sm one">${esc(chName(c))}</b><span class="xs muted" style="flex:none">${last?ftime(last.t):''}</span></div><div class="row between" style="gap:8px"><span class="xs muted one">${prev(last)}</span>${n?`<span class="badge b-red" style="flex:none">${n>99?'99+':n}</span>`:''}</div></div></div>`).join('')}</div>
+   <div class="sec-h">${L('同事（点击私聊）','Colleagues (tap to message)')}</div>
+   <div class="box" style="margin-top:0;padding:4px 16px">${DEPTS.map(d=>{const us=others.filter(u=>d.roles.includes(u.role));return us.length?`<div class="xs muted b" style="padding:10px 0 2px">${esc(deptName(d))}</div>`+us.map(u=>`<div class="li" onclick="openDm('${u.id}')">${avatar(u.id,36)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(u.name))}</div><div class="xs muted">${esc(userTitle(u))}</div></div>${ic('chat',18)}</div>`).join(''):''}).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有同事账号','No colleagues yet')}</div>`}</div></div>`};
+const ftime=t=>{const d=new Date(t),n=new Date();return d.toDateString()===n.toDateString()?pad2(d.getHours())+':'+pad2(d.getMinutes()):(d.getMonth()+1)+'/'+d.getDate()};
+function openDm(uid){const id='D_'+[meId(),uid].sort().join('_');if(!DB.get('chat',id))DB.put('chat',{id,type:'dm',mem:[meId(),uid].sort(),t:Date.now()});go('chat_room',{ch:id})}
+function grpSheet(id){const c=id?chGet(id):null;S.grp={id:id||null,n:c?{...(c.n||{zh:'',en:''})}:{zh:'',en:''},mem:c?[...c.mem]:[meId()]};const us=DB.all('users').filter(u=>u.active!==false);
+  openSheet(`<div class="sh">${id?L('群设置','Group settings'):L('发起群聊','New group')}</div>
+   <div class="row gap"><div class="fld" style="flex:1;min-width:0"><label>${L('群名称','Group name')}</label><input class="inp" style="background:var(--card)" value="${esc(S.grp.n.zh)}" data-zh2en="#grEn" placeholder="${L('如：销售部、库马西门店','e.g. Sales team')}" oninput="S.grp.n.zh=this.value"></div>
+    <div class="fld" style="flex:1;min-width:0"><label>${L('英文名称','English name')}</label><input class="inp" id="grEn" data-auto="1" style="background:var(--card)" value="${esc(S.grp.n.en)}" placeholder="${L('自动生成，可修改','Auto-filled, editable')}" oninput="S.grp.n.en=this.value"></div></div>
+   <div class="fld"><label>${L('成员','Members')} <span id="grN" class="muted">${S.grp.mem.length}</span></label><div class="chips wrap" style="margin-bottom:6px">${DEPTS.map(d=>`<span class="chip" onclick="us_dept('${d.id}')">+ ${esc(deptName(d))}</span>`).join('')}</div>
+    <div class="box" style="padding:4px 14px;max-height:40vh;overflow:auto">${us.map(u=>`<label class="li" style="cursor:pointer">${avatar(u.id,32)}<span class="sm" style="flex:1">${esc(nmP(u.name))} <span class="xs muted">${esc(userTitle(u))}</span></span><input type="checkbox" class="grc" value="${u.id}" ${S.grp.mem.includes(u.id)?'checked':''} ${u.id===meId()?'disabled':''} onchange="grpMem()" style="width:20px;height:20px;accent-color:#0B7A4B"></label>`).join('')}</div></div>
+   <button class="bigbtn" style="width:100%;margin-top:14px" onclick="grpSave()">${id?L('保存','Save'):L('创建群聊','Create group')}</button>
+   ${id?`<button class="bigbtn dark" style="width:100%;margin-top:10px" onclick="grpLeave('${id}')">${L('退出群聊','Leave group')}</button>`:''}`)}
+function us_dept(d){const dd=DEPTS.find(x=>x.id===d);$$('.grc').forEach(c=>{const u=DB.get('users',c.value);if(u&&dd.roles.includes(u.role))c.checked=true});grpMem()}
+function grpMem(){S.grp.mem=[meId(),...$$('.grc').filter(c=>c.checked&&c.value!==meId()).map(c=>c.value)];$('#grN').textContent=S.grp.mem.length}
+async function grpSave(){const g=S.grp;if(g.mem.length<2)return toast(L('至少选择 1 位同事','Choose at least one colleague'));if(!g.n.zh.trim()&&!g.n.en.trim())g.n={zh:g.mem.slice(0,3).map(u=>userName(u)).join('、'),en:''};await fillEn(g.n);
+  const old=g.id&&chGet(g.id);const d=DB.put('chat',{...(old||{}),id:g.id||undefined,type:'grp',n:g.n,mem:g.mem,owner:(old&&old.owner)||meId(),t:(old&&old.t)||Date.now()});closeSheet(true);if(g.id)render(false);else go('chat_room',{ch:d.id})}
+function grpLeave(id){const c=chGet(id);confirmSheet(L('退出群聊？','Leave this group?'),esc(chName(c)),L('退出','Leave'),()=>{DB.put('chat',{...c,mem:c.mem.filter(x=>x!==meId())});closeSheet(true);tab('chat')})}
+/* 聊天窗口 */
+const EMO='😀 😂 🤣 😊 😍 😘 😎 🤔 😅 😭 😡 👍 👎 👏 🙏 💪 🤝 👌 ✌️ 🎉 🔥 ❤️ 💯 ✅ ❌ ⚠️ 📦 🚚 💰 📈 📉 ⏰ ☎️ 📍 🛵 📱 🔧 🏠 ☕ 🌙'.split(' ');
+V.chat_room=()=>{const c=chGet(S.params.ch);if(!c)return hdr(L('消息','Chat'))+emptyBox('chat',L('会话不存在','Chat not found'));chMarkRead(c.id);S.chId=c.id;
+  const info=c.type==='grp'?`<button class="icbtn" onclick="grpSheet('${c.id}')">${ic('users')}</button>`:'';
+  return hdr(`${esc(chName(c))}${c.mem&&c.type==='grp'?` <span class="xs muted">(${c.mem.length})</span>`:''}`,info)+`<div class="pad" style="padding-bottom:150px"><div id="msgs">${chatMsgsHTML(c)}</div></div>
+   <div class="bbar chatbar" style="flex-direction:column;align-items:stretch;gap:8px;padding-top:8px">
+    <div id="cReply" style="display:${S.cReply?'flex':'none'}" class="row between xs muted"><span class="one">${S.cReply?L('回复 ','Reply to ')+esc(userName(S.cReply.by))+'：'+esc(S.cReply.text||L('[图片]','[Photo]')):''}</span><a onclick="S.cReply=null;$('#cReply').style.display='none'">✕</a></div>
+    <div id="cEmo" style="display:none;flex-wrap:wrap;gap:4px;max-height:150px;overflow:auto">${EMO.map(e=>`<span style="font-size:24px;padding:4px;cursor:pointer" onclick="chIns('${e}')">${e}</span>`).join('')}</div>
+    <div class="row" style="gap:6px;align-items:flex-end">
+     <button class="icbtn" style="flex:none" onclick="const e=$('#cEmo');e.style.display=e.style.display==='none'?'flex':'none'">${ic('smile',20)}</button>
+     <textarea id="cIn" class="inp" rows="1" style="flex:1;min-width:0;resize:none;max-height:110px;padding:10px 12px;background:var(--card)" placeholder="${L('输入消息（自动翻译）','Message (auto-translated)')}" oninput="S.cDraft=this.value;this.style.height='auto';this.style.height=Math.min(110,this.scrollHeight)+'px';chAt(this)">${esc(S.cDraft||'')}</textarea>
+     <button class="icbtn" style="flex:none" onclick="chMore()">${ic('plus',20)}</button>
+     <button class="icbtn" style="flex:none;background:var(--green);color:#fff" onclick="chSend()">${ic('send',18)}</button></div></div>`};
+function chatMsgsHTML(c){const ms=chMsgs(c.id).slice(-300);let last=0;
+  return ms.map(m=>{const mine=m.by===meId();let h='';if(m.t-last>5*60e3)h+=`<div class="xs muted" style="text-align:center;margin:14px 0 6px">${fdate(m.t)}</div>`;last=m.t;
+    if(m.rc)return h+`<div class="xs muted" style="text-align:center;margin:8px 0">${mine?L('你','You'):esc(userName(m.by))} ${L('撤回了一条消息','recalled a message')}</div>`;
+    const tr=m.text?chTr(m.text):'';const body=(m.reply?`<div class="xs" style="opacity:.7;border-left:3px solid currentColor;padding-left:6px;margin-bottom:4px">${esc(userName(m.reply.by))}：${esc((m.reply.text||L('[图片]','[Photo]')).slice(0,40))}</div>`:'')+
+      (m.img?`<img src="${esc(m.thumb||m.img)}" style="max-width:180px;max-height:220px;border-radius:12px;display:block" loading="lazy" onclick="event.stopPropagation();viewImg('${esc(m.img)}')">`:'')+
+      (m.loc?`<div onclick="event.stopPropagation();openExt('https://maps.google.com/?q=${m.loc.lat},${m.loc.lng}')" style="cursor:pointer"><b>${ic('pin',14)} ${L('位置','Location')}</b><div class="xs">${esc(m.loc.addr||(m.loc.lat.toFixed(5)+', '+m.loc.lng.toFixed(5)))}</div></div>`:'')+
+      (m.text?`<div style="white-space:pre-wrap;word-break:break-word">${esc(m.text).replace(/@(\S+)/g,'<b>@$1</b>')}</div>`:'')+
+      (tr?`<div class="xs" style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.4)':'var(--line)'};opacity:.85">${ic('translate',12)} ${esc(tr)}</div>`:'');
+    return h+`<div class="row" style="gap:8px;margin:8px 0;align-items:flex-start;${mine?'flex-direction:row-reverse':''}">${avatar(m.by,34)}<div style="max-width:76%;min-width:0">${mine||c.type==='dm'?'':`<div class="xs muted" style="margin:0 0 2px 4px">${esc(userName(m.by))}</div>`}
+      <div onclick="msgMenu('${m.id}')" style="cursor:pointer;padding:9px 12px;border-radius:16px;${mine?'background:var(--green);color:#fff;border-top-right-radius:4px':'background:#fff;border-top-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)'}">${body}</div></div></div>`}).join('')||`<div class="sm muted" style="text-align:center;margin-top:40px">${L('说点什么吧','Say hello')}</div>`}
+function chatPaint(){if(S.view!=='chat_room')return;const box=$('#msgs'),sc=$('#screen');if(!box)return;const c=chGet(S.chId);if(!c)return;
+  const atBottom=sc.scrollHeight-sc.scrollTop-sc.clientHeight<120;box.innerHTML=chatMsgsHTML(c);chMarkRead(c.id);if(atBottom)sc.scrollTop=sc.scrollHeight}
+function chIns(t){const i=$('#cIn');const p=i.selectionStart||i.value.length;i.value=i.value.slice(0,p)+t+i.value.slice(p);S.cDraft=i.value;i.focus()}
+function chAt(i){const c=chGet(S.chId);if(!c||c.type==='dm'||!i.value.endsWith('@'))return;const us=(c.mem||DB.all('users').map(u=>u.id)).filter(u=>u!==meId());
+  openSheet(`<div class="sh">${L('选择要提醒的人','Mention someone')}</div><div class="box" style="padding:4px 14px">${(c.mem?'':`<div class="li" onclick="chAtPick('all')"><div class="av" style="width:32px;height:32px;background:var(--green);color:#fff">@</div><span class="b sm">${L('所有人','Everyone')}</span></div>`)+us.map(u=>`<div class="li" onclick="chAtPick('${u}')">${avatar(u,32)}<span class="sm">${esc(userName(u))}</span></div>`).join('')}</div>`)}
+function chAtPick(u){closeSheet(true);const i=$('#cIn');i.value=i.value+(u==='all'?L('所有人','all'):userName(u))+' ';S.cDraft=i.value;S.cAt=[...(S.cAt||[]),u];i.focus()}
+function chPost(o){const c=chGet(S.chId);if(!c)return;if(c.id===CH_ALL&&!DB.get('chat',CH_ALL))DB.put('chat',{id:CH_ALL,type:'all',mem:null,t:Date.now()});
+  DB.put('msg',{ch:c.id,mem:c.mem||null,t:Date.now(),lg:S.lang,...o});DB.put('chat',{...(DB.get('chat',c.id)||c),lt:Date.now()},{quiet:true});
+  S.cReply=null;const r=$('#cReply');if(r)r.style.display='none';chatPaint();const sc=$('#screen');sc.scrollTop=sc.scrollHeight}
+function chSend(){const i=$('#cIn');const t=(i.value||'').trim();if(!t)return;const rp=S.cReply?{id:S.cReply.id,by:S.cReply.by,text:(S.cReply.text||'').slice(0,80)}:null;
+  chPost({text:t,reply:rp,at:S.cAt||[]});i.value='';S.cDraft='';S.cAt=[];i.style.height='auto';i.focus()}
+function chMore(){openSheet(`<div class="sh">${L('发送','Send')}</div><div class="wtiles" style="margin-top:12px">
+   <div class="wtile" style="background:var(--blue)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),false)"><div class="wti">${ic('image')}</div><div class="b">${L('相册图片','Photo')}</div></div>
+   <div class="wtile" style="background:var(--green)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),true)"><div class="wti">${ic('camera')}</div><div class="b">${L('拍照','Camera')}</div></div>
+   <div class="wtile" style="background:var(--orange)" onclick="closeSheet(true);chLoc()"><div class="wti">${ic('pin')}</div><div class="b">${L('发送位置','Location')}</div></div></div>`)}
+async function chLoc(){toast(L('正在获取位置…','Getting location…'),false);try{const p=await getPos();chPost({loc:{lat:p.lat,lng:p.lng,addr:await revGeo(p.lat,p.lng)}})}catch(e){toast(e.message)}}
+function msgMenu(id){const m=DB.get('msg',id);if(!m||m.rc)return;const mine=m.by===meId();const canRc=mine&&Date.now()-m.t<120e3;
+  openSheet(`<div class="box" style="padding:4px 16px;margin-top:6px">
+   <div class="li" onclick="S.cReply=DB.get('msg','${id}');closeSheet(true);render(false);setTimeout(()=>$('#cIn')&&$('#cIn').focus(),50)">${ic('reply',18)} <span class="sm b">${L('回复','Reply')}</span></div>
+   ${m.text?`<div class="li" onclick="copyText(DB.get('msg','${id}').text);closeSheet(true)">${ic('copy',18)} <span class="sm b">${L('复制','Copy')}</span></div>`:''}
+   ${canRc?`<div class="li" onclick="DB.put('msg',{...DB.get('msg','${id}'),rc:true,text:'',img:'',thumb:'',loc:null});closeSheet(true);chatPaint()">${ic('ret',18)} <span class="sm b red">${L('撤回（2 分钟内）','Recall (within 2 min)')}</span></div>`:''}</div>`)}
+function viewImg(u){openSheet(`<img src="${esc(u)}" style="width:100%;border-radius:14px;margin-top:8px">`)}
+/* 定位：浏览器定位 + 反查地址（OpenStreetMap） */
+function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(new Error(L('此设备不支持定位','Location not supported')));
+  navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy||0)}),e=>rej(new Error(e.code===1?L('请在手机设置里允许定位权限','Allow location access in phone settings'):L('定位失败，请到开阔处重试','Could not get location — try again outdoors'))),{enableHighAccuracy:true,timeout:15000,maximumAge:0})})}
+async function revGeo(lat,lng){try{const r=await Promise.race([fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&accept-language=${S.lang==='zh'?'zh-CN,en':S.lang}&lat=${lat}&lon=${lng}`),new Promise((_,j)=>setTimeout(()=>j(0),6000))]);const j=await r.json();return j.display_name||''}catch(e){return ''}}
+
+/* ===== 外勤打卡：定位 + 带水印的现场照片（姓名、时间、地址、经纬度）。总经理、销售经理、运营经理可查看，出勤统计报给销售经理 ===== */
+const ATT_T={in:['上班打卡','Clock in'],visit:['拜访客户','Customer visit'],out:['下班打卡','Clock out']};
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+V.att=()=>{const mine=DB.all('att').filter(a=>a.by===meId()).sort((a,b)=>b.t-a.t);const today=mine.filter(a=>dayKey(a.t)===dayKey(Date.now()));
+  const hasIn=today.some(a=>a.type==='in'),hasOut=today.some(a=>a.type==='out');
+  const next=!hasIn?'in':!hasOut?'visit':'visit';
+  return `<div class="pad" style="padding-top:16px"><div class="ptitle">${L('外勤打卡','Field check-in')}</div>
+   <div class="box" style="margin-top:12px;text-align:center;padding:22px 16px"><div class="xs muted">${new Date().toLocaleDateString(S.lang==='zh'?'zh-CN':'en-GB',{weekday:'long',month:'long',day:'numeric'})}</div>
+    <div style="font-size:40px;font-weight:800;margin:6px 0" id="attClock" data-notr>${pad2(new Date().getHours())}:${pad2(new Date().getMinutes())}</div>
+    <div class="row gap" style="justify-content:center;flex-wrap:wrap;margin-top:6px">
+     ${['in','visit','out'].map(k=>{const dis=k==='in'&&hasIn||k==='out'&&(hasOut||!hasIn);return `<button class="bigbtn ${k===next?'':'ghost'}" style="flex:1;min-width:92px;height:50px;font-size:14px;${dis?'opacity:.4':''}" ${dis?'disabled':''} onclick="attGo('${k}')">${ic(k==='visit'?'user':'pin',16)} ${L(ATT_T[k][0],ATT_T[k][1])}</button>`}).join('')}</div>
+    <div class="xs muted" style="margin-top:12px;line-height:1.6">${L('打卡时会自动定位并拍一张现场照片，照片上加水印（姓名、时间、地址、经纬度），总经理、销售经理和运营经理都能看到。','Each check-in records your location and a site photo with a watermark (name, time, address, coordinates). The GM, sales manager and operations manager can see it.')}</div></div>
+   <div class="sec-h">${L('我的打卡记录','My check-ins')}</div>${attList(mine.slice(0,60),false)}</div>`};
+function attList(l,showName){return `<div class="box" style="margin-top:0;padding:4px 16px">${l.map(a=>`<div class="li" onclick="attView('${a.id}')">${a.thumb||a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none" loading="lazy">`:`<div class="qi">${ic('pin',18)}</div>`}
+  <div style="flex:1;min-width:0"><div class="b sm one">${showName?esc(userName(a.by))+' · ':''}${L(ATT_T[a.type][0],ATT_T[a.type][1])}${a.cus?' · '+esc(ptName(a.cus)):''}</div><div class="xs muted one">${fdate(a.t)}</div><div class="xs muted one">${esc(a.addr||(a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):L('未定位','No location')))}</div></div></div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有打卡记录','No check-ins yet')}</div>`}</div>`}
+function attView(id){const a=DB.get('att',id);openSheet(`<div class="sh">${L(ATT_T[a.type][0],ATT_T[a.type][1])}</div><div class="sm muted">${esc(userName(a.by))} · ${fdate(a.t)}</div>
+  ${a.photo?`<img src="${esc(a.photo)}" style="width:100%;border-radius:14px;margin-top:12px">`:''}
+  <div class="kv" style="margin-top:12px"><div style="grid-column:1/3"><div class="l">${L('地址','Address')}</div><div class="v">${esc(a.addr||'—')}</div></div><div><div class="l">${L('经纬度','Coordinates')}</div><div class="v" data-notr>${a.lat?a.lat.toFixed(5)+', '+a.lng.toFixed(5):'—'}</div></div><div><div class="l">${L('精度','Accuracy')}</div><div class="v" data-notr>${a.acc?a.acc+' m':'—'}</div></div>
+  ${a.cus?`<div><div class="l">${L('客户','Customer')}</div><div class="v">${esc(ptName(a.cus))}</div></div>`:''}${a.note?`<div style="grid-column:1/3"><div class="l">${L('备注','Note')}</div><div class="v">${esc(a.note)}</div></div>`:''}</div>
+  ${a.lat?`<button class="bigbtn ghost" style="width:100%;margin-top:14px" onclick="openExt('https://maps.google.com/?q=${a.lat},${a.lng}')">${ic('pin',18)} ${L('在地图上查看','Open in maps')}</button>`:''}`)}
+/* 打卡：先定位，再拍照（加水印），可选客户与备注 */
+async function attGo(type){toast(L('正在定位…','Getting location…'),false);let p;try{p=await getPos()}catch(e){return toast(e.message)}
+  const addr=await revGeo(p.lat,p.lng);S.att={type,...p,addr,photo:'',thumb:'',cus:'',note:''};attSheet()}
+function attSheet(){const a=S.att;openSheet(`<div class="sh">${L(ATT_T[a.type][0],ATT_T[a.type][1])}</div>
+  <div class="note-g" style="margin-top:8px">${ic('pin',14)} ${esc(a.addr||(a.lat.toFixed(5)+', '+a.lng.toFixed(5)))} <span class="xs muted" data-notr>±${a.acc}m</span></div>
+  <div class="ph" id="attPh" style="width:100%;height:200px;margin-top:12px;border-radius:16px" onclick="attPhoto()">${a.photo?`<img src="${esc(a.thumb||a.photo)}" style="width:100%;height:100%;object-fit:cover;border-radius:16px">`:`<div style="text-align:center">${ic('camera',28)}<div class="sm b" style="margin-top:6px">${L('拍现场照片（必拍，自动加水印）','Take a site photo (required, watermarked)')}</div></div>`}</div>
+  ${a.type==='visit'?`<div class="fld"><label>${L('拜访客户','Customer visited')}</label>${partnerSel('cus',a.cus,"S.att.cus=this.value")}</div>`:''}
+  <div class="fld"><label>${L('备注（可选）','Note (optional)')}</label><input class="inp" style="background:var(--card)" value="${esc(a.note)}" oninput="S.att.note=this.value"></div>
+  <button class="bigbtn" style="width:100%;margin-top:14px" onclick="attSave()">${ic('check',18)} ${L('确认打卡','Check in')}</button>`)}
+function attPhoto(){const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';
+  i.onchange=async()=>{const f=i.files[0];if(!f)return;toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
+    const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)} · ${L(ATT_T[a.type][0],ATT_T[a.type][1])}`,new Date().toLocaleString(S.lang==='zh'?'zh-CN':'en-GB'),a.addr||'',`${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} ±${a.acc}m`].filter(Boolean);
+    const [big,small]=await Promise.all([wmImg(f,1280,lines),wmImg(f,240,[])]);const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;attSheet()};i.click()}
+/* 水印：照片底部半透明黑条 + 白字（姓名职位、时间、地址、经纬度） */
+function wmImg(f,max,lines){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
+  const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);if(lines.length){const fs=Math.max(14,Math.round(c.width/34)),lh=fs*1.35;const wrap=[];x.font=`600 ${fs}px sans-serif`;
+    lines.forEach(t=>{let cur='';for(const ch of t){if(x.measureText(cur+ch).width>c.width-fs*2){wrap.push(cur);cur=ch}else cur+=ch}wrap.push(cur)});
+    const h=wrap.length*lh+fs*1.2;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,c.height-h,c.width,h);x.fillStyle='#fff';x.textBaseline='top';wrap.forEach((t,i)=>x.fillText(t,fs,c.height-h+fs*.6+i*lh));
+    x.fillStyle='#F2B705';x.fillRect(0,c.height-h,Math.max(6,fs/3),h)}
+  res(c.toDataURL('image/jpeg',.82))};im.src=r.result};r.readAsDataURL(f)})}
+function attSave(){const a=S.att;if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
+  DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);toast(L('打卡成功','Checked in'),false);render(false)}
+/* 考勤统计：按人、按月；出勤天数、首次 / 末次打卡、拜访次数；点人看明细 */
+V.att_stats=()=>{const m=S.attM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
+  const rs=DB.all('att').filter(a=>a.t>=from&&a.t<to);const staff=DB.all('users').filter(u=>u.active!==false&&(ROLES[u.role].p==='*'?false:ROLES[u.role].p.includes('att')));
+  const ws=+((DB.get('settings','app')||{}).workStart||9);
+  const row=u=>{const l=rs.filter(a=>a.by===u.id);const days=[...new Set(l.filter(a=>a.type==='in').map(a=>dayKey(a.t)))];const late=days.filter(d=>{const f=l.filter(a=>a.type==='in'&&dayKey(a.t)===d).sort((a,b)=>a.t-b.t)[0];const h=new Date(f.t);return h.getHours()+h.getMinutes()/60>ws+0.25}).length;
+    return {u,days:days.length,late,visit:l.filter(a=>a.type==='visit').length,out:new Set(l.filter(a=>a.type==='out').map(a=>dayKey(a.t))).size,last:l.sort((a,b)=>b.t-a.t)[0]}};
+  const data=staff.map(row);const sel=S.attU;
+  return hdr(L('考勤统计','Attendance'),`<button class="icbtn" onclick="exportAtt('${m}')">${ic('download')}</button>`)+`<div class="pad">
+   <div class="row gap" style="margin-top:6px"><button class="icbtn" onclick="S.attM=attShift('${m}',-1);render(false)">${ic('back')}</button><b style="flex:1;text-align:center" data-notr>${m}</b><button class="icbtn" style="transform:scaleX(-1)" onclick="S.attM=attShift('${m}',1);render(false)">${ic('back')}</button></div>
+   <div class="xs muted" style="margin-top:6px">${L(`上班时间 ${ws}:00，晚于 ${ws}:15 打卡算迟到`,`Work starts ${ws}:00; after ${ws}:15 counts as late`)}</div>
+   <div class="box" style="padding:4px 16px">${data.map(d=>`<div class="li" onclick="S.attU=S.attU==='${d.u.id}'?null:'${d.u.id}';render(false)">${avatar(d.u.id,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(d.u.name))} <span class="xs muted">${esc(userTitle(d.u))}</span></div>
+     <div class="xs muted">${L('出勤','Days')} <b>${d.days}</b> · ${L('迟到','Late')} <b class="${d.late?'red':''}">${d.late}</b> · ${L('拜访','Visits')} <b>${d.visit}</b> · ${L('下班打卡','Clock-outs')} <b>${d.out}</b></div>${d.last?`<div class="xs muted one">${L('最近：','Latest: ')}${fdate(d.last.t)} · ${esc(d.last.addr||'')}</div>`:''}</div>${ic('chev',14)}</div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有外勤人员账号','No field staff accounts')}</div>`}</div>
+   ${sel?`<div class="sec-h">${esc(userName(sel))} · ${L('打卡明细','Records')}</div>${attList(rs.filter(a=>a.by===sel).sort((a,b)=>b.t-a.t),false)}`:`<div class="sec-h">${L('本月全部打卡','All check-ins this month')}</div>${attList(rs.sort((a,b)=>b.t-a.t).slice(0,80),true)}`}</div>`};
+const attShift=(m,d)=>{const [y,mo]=m.split('-').map(Number);const x=new Date(y,mo-1+d,1);return x.getFullYear()+'-'+pad2(x.getMonth()+1)};
+function exportAtt(m){const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
+  const rows=[[L('姓名','Name'),L('职位','Position'),L('类型','Type'),L('时间','Time'),L('客户','Customer'),L('地址','Address'),L('纬度','Lat'),L('经度','Lng'),L('备注','Note')]];
+  DB.all('att').filter(a=>a.t>=from&&a.t<to).sort((a,b)=>a.t-b.t).forEach(a=>{const u=DB.get('users',a.by)||{};rows.push([nmP(u.name),userTitle(u),L(ATT_T[a.type][0],ATT_T[a.type][1]),fdate(a.t),a.cus?ptName(a.cus):'',a.addr||'',a.lat||'',a.lng||'',a.note||''])});
+  downloadFile(`attendance_${m}.csv`,csv(rows))}
+
+/* ===== 费用报销：办公费、外勤报销、杂费。普通费用：提交 → 会计入账 → 出纳付款；特殊费用（超过限额或标为特殊）：先由总经理或运营经理审批，再报备财务 ===== */
+const EXP_C={office:['办公用品','Office supplies'],rent:['房租水电','Rent & utilities'],travel:['交通差旅','Travel & transport'],meal:['餐饮招待','Meals & hospitality'],comm:['通讯网络','Phone & internet'],
+  field:['外勤报销','Field claims'],freight:['运费物流','Freight & logistics'],clear:['清关报关','Customs & clearance'],repair:['维修保养','Repairs'],staff:['工资福利','Staff costs'],other:['其他','Other']};
+const EXP_ST={submitted:['待审核','Submitted','b-gold'],approved:['已审批，待入账','Approved, to book','b-blue'],booked:['已入账，待付款','Booked, to pay','b-blue'],paid:['已付款','Paid','b-green'],rejected:['已驳回','Rejected','b-red'],void:['已撤回','Withdrawn','b-grey']};
+const expLimit=()=>+((DB.get('settings','app')||{}).expLimit||1000);
+const expName=k=>L((EXP_C[k]||EXP_C.other)[0],(EXP_C[k]||EXP_C.other)[1]);
+/* 当前用户在这笔费用上能做什么 */
+function expAct(e){const r=S.me.role;
+  if(e.status==='submitted'&&e.special&&can('exp_approve'))return 'approve';
+  if((e.status==='submitted'&&!e.special||e.status==='approved')&&own('exp_book'))return 'book';
+  if(e.status==='booked'&&own('fin_pay'))return 'pay';return ''}
+function expTodo(){if(!S.me)return 0;return DB.all('exp').filter(e=>expAct(e)).length+DB.all('exp').filter(e=>e.by===S.me.id&&e.status==='rejected'&&!e.seen).length}
+const expSeeAll=()=>can('exp_approve')||own('exp_book')||own('fin_pay');
+V.exp=()=>{const seg=S.expSeg||(expTodo()?'todo':'mine');const all=DB.all('exp').sort((a,b)=>b.t-a.t);
+  const l=seg==='todo'?all.filter(e=>expAct(e)):seg==='all'?all:all.filter(e=>e.by===S.me.id);const mon=+new Date(new Date().getFullYear(),new Date().getMonth(),1);
+  const mineM=all.filter(e=>e.by===S.me.id&&e.t>=mon&&!['rejected','void'].includes(e.status)).reduce((a,e)=>a+(+e.amt||0),0);
+  return hdr(L('费用报销','Expenses'),expSeeAll()?`<button class="icbtn" onclick="go('exp_stats')">${ic('chart')}</button>`:'')+`<div class="pad">
+   <button class="bigbtn" style="width:100%;margin-top:6px" onclick="expNew()">${ic('plus',18)} ${L('新增费用 / 报销','New expense / claim')}</button>
+   <div class="xs muted" style="margin-top:8px;line-height:1.6">${L(`流程：提交 → 会计入账 → 出纳付款。单笔超过 ${money(expLimit())} 或标为“特殊费用”的，先由总经理或运营经理审批，再报备财务。`,`Flow: submit → accountant books → cashier pays. Over ${money(expLimit())} or marked special: the GM or operations manager approves first.`)}</div>
+   <div class="seg" style="margin-top:12px">${[['mine',L('我的','Mine')],...(expSeeAll()||expTodo()?[['todo',L('待我处理','To do')+(expTodo()?` (${expTodo()})`:'')]]:[]),...(expSeeAll()?[['all',L('全部','All')]]:[])].map(([k,t])=>`<button class="${seg===k?'on':''}" onclick="S.expSeg='${k}';render(false)">${t}</button>`).join('')}</div>
+   ${seg==='mine'?`<div class="xs muted" style="margin:8px 2px">${L('本月我的费用','My expenses this month')} <b data-notr>${money(mineM)}</b></div>`:''}
+   <div style="margin-top:8px">${l.slice(0,120).map(e=>`<div class="box" style="margin-top:8px;padding:12px 14px;cursor:pointer" onclick="expView('${e.id}')"><div class="row between" style="gap:8px"><div style="min-width:0"><div class="b sm one">${expName(e.cat)}${e.special?` <span class="badge b-red" style="padding:1px 7px">${L('特殊','Special')}</span>`:''}</div><div class="xs muted one">${esc(userName(e.by))} · ${fdate(e.t)}${e.note?' · '+esc(e.note):''}</div></div>
+     <div style="text-align:right;flex:none"><b data-notr>${money(e.amt)}</b><div>${stB(EXP_ST,e.status)}</div></div></div></div>`).join('')||emptyBox('receipt',L('暂无费用记录','No expenses'))}</div></div>`};
+function expNew(){S.ex={cat:S.me.role==='field'?'field':'office',amt:'',note:'',photo:'',thumb:'',special:false};expForm()}
+function expForm(){const e=S.ex;openSheet(`<div class="sh">${L('新增费用 / 报销','New expense / claim')}</div>
+  <div class="fld"><label>${L('类别','Category')}</label><div class="chips wrap" id="exC">${Object.keys(EXP_C).map(k=>`<span class="chip ${e.cat===k?'on':''}" onclick="S.ex.cat='${k}';$$('#exC .chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${expName(k)}</span>`).join('')}</div></div>
+  <div class="fld"><label>${L('金额','Amount')} (${esc(CUR())} ${baseIso()})</label><input class="inp" type="number" inputmode="decimal" style="background:var(--card);font-size:20px;font-weight:800" value="${e.amt}" oninput="S.ex.amt=this.value;$('#exS').style.display=(+this.value>expLimit())?'':'none'"><div class="xs red" id="exS" style="display:${+e.amt>expLimit()?'':'none'};margin-top:4px">${L(`超过 ${money(expLimit())}，需要总经理或运营经理审批`,`Over ${money(expLimit())}: needs GM / operations approval`)}</div></div>
+  <div class="fld"><label>${L('用途说明（必填）','What for (required)')}</label><input class="inp" style="background:var(--card)" value="${esc(e.note)}" placeholder="${L('如：拜访库马西客户打车费','e.g. taxi to a customer in Kumasi')}" oninput="S.ex.note=this.value"></div>
+  <div class="row gap" style="margin-top:12px;align-items:center"><div class="ph" id="exPh" onclick="pickImage2(1280,(u,t)=>{S.ex.photo=u;S.ex.thumb=t;$('#exPh').innerHTML='<img src=&quot;'+t+'&quot;>'},true)">${e.thumb?`<img src="${esc(e.thumb)}">`:ic('camera')}</div><span class="sm muted">${L('拍发票 / 收据（建议）','Photo of the receipt (recommended)')}</span></div>
+  <label class="row gap" style="margin-top:12px"><input type="checkbox" ${e.special?'checked':''} onchange="S.ex.special=this.checked" style="width:20px;height:20px;accent-color:#0B7A4B"><span class="sm b">${L('特殊费用（需总经理或运营经理审批）','Special expense (needs GM / operations approval)')}</span></label>
+  <button class="bigbtn" style="width:100%;margin-top:16px" onclick="expSave()">${L('提交','Submit')}</button>`)}
+function expSave(){const e=S.ex;const amt=+e.amt;if(!(amt>0))return toast(L('请填写金额','Enter the amount'));if((e.note||'').trim().length<2)return toast(L('请填写用途说明','Say what it was for'));
+  const sp=!!e.special||amt>expLimit();DB.put('exp',{cat:e.cat,amt:Math.round(amt*100)/100,note:e.note.trim(),photo:e.photo,thumb:e.thumb,special:sp,status:'submitted',t:Date.now()});
+  closeSheet(true);toast(sp?L('已提交，等待总经理或运营经理审批','Submitted — waiting for GM / operations approval'):L('已提交，等待会计入账','Submitted — waiting for the accountant'),false);S.expSeg='mine';render(false)}
+function expView(id){const e=DB.get('exp',id);if(e.by===S.me.id&&e.status==='rejected'&&!e.seen)DB.put('exp',{...e,seen:true},{quiet:true});const act=expAct(e);
+  const line=(t,o)=>o?`<div class="xs muted" style="margin-top:4px">${ic('check',12)} ${t}：${esc(userName(o.by))} · ${fdate(o.t)}${o.note?' · '+esc(o.note):''}${o.ref?' · '+esc(o.ref):''}</div>`:'';
+  openSheet(`<div class="row between"><div class="sh">${expName(e.cat)}</div>${stB(EXP_ST,e.status)}</div><div class="sm muted">${esc(userName(e.by))} · ${fdate(e.t)}</div>
+   <div style="font-size:30px;font-weight:800;margin-top:8px" data-notr>${moneyBase(e.amt)}</div>${e.special?`<span class="badge b-red">${L('特殊费用','Special expense')}</span>`:''}
+   <div class="sm" style="margin-top:8px">${esc(e.note)}</div>${e.photo?`<img src="${esc(e.photo)}" style="width:100%;border-radius:14px;margin-top:10px" onclick="viewImg('${esc(e.photo)}')">`:''}
+   <div style="margin-top:8px">${line(L('审批','Approved'),e.ap)}${line(L('入账','Booked'),e.bk)}${line(L('付款','Paid'),e.pd)}${e.rj?`<div class="note-r" style="margin-top:8px">${L('驳回：','Rejected: ')}${esc(e.rj.note||'')} · ${esc(userName(e.rj.by))}</div>`:''}</div>
+   ${act?`<div class="fld"><label>${act==='pay'?L('付款方式与凭证号','Method & reference'):L('意见（驳回时必填）','Comment (required to reject)')}</label>
+    ${act==='pay'?`<div class="chips wrap">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#exN',true)">${pmName(k)}</span>`).join('')}</div>`:''}
+    <input class="inp" id="exN" style="background:var(--card);margin-top:${act==='pay'?8:0}px" placeholder="${act==='pay'?refLabel('cash')+L('（必填）',' (required)'):''}"></div>
+    <div class="row gap" style="margin-top:12px">${act!=='pay'?`<button class="bigbtn dark" style="flex:1" onclick="expDo('${id}',false)">${L('驳回','Reject')}</button>`:''}<button class="bigbtn" style="flex:1" onclick="expDo('${id}',true)">${ic('check',18)} ${act==='approve'?L('批准，报备财务','Approve → finance'):act==='book'?L('入账，交出纳付款','Book → cashier'):L('确认已付款','Confirm paid')}</button></div>`:''}
+   ${e.by===S.me.id&&e.status==='submitted'?`<button class="bigbtn ghost" style="width:100%;margin-top:10px" onclick="DB.put('exp',{...DB.get('exp','${id}'),status:'void'});closeSheet(true);render(false)">${L('撤回','Withdraw')}</button>`:''}`)}
+function expDo(id,ok){const e=DB.get('exp',id);const act=expAct(e);if(!act)return toast(L('这笔已处理','Already handled'));const n=($('#exN').value||'').trim();const o={by:S.me.id,t:Date.now(),note:n};
+  if(!ok){if(n.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('exp',{...e,status:'rejected',rj:o,seen:false})}
+  else if(act==='approve')DB.put('exp',{...e,status:'approved',ap:o});
+  else if(act==='book')DB.put('exp',{...e,status:'booked',bk:o,bt:Date.now()});
+  else{const m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash';if(n.length<2)return toast(L('请填写','Enter the ')+refLabel(m));DB.put('exp',{...e,status:'paid',pd:{...o,ref:n,method:m}})}
+  closeSheet(true);toast(L('已处理','Done'),false);render(false)}
+/* 费用统计：按月、按类别、按人员，方便核算运营成本 */
+V.exp_stats=()=>{const m=S.exM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
+  const l=DB.all('exp').filter(e=>e.t>=from&&e.t<to&&!['rejected','void'].includes(e.status));const tot=l.reduce((a,e)=>a+(+e.amt||0),0);
+  const byC=Object.keys(EXP_C).map(k=>({k,v:l.filter(e=>e.cat===k).reduce((a,e)=>a+(+e.amt||0),0)})).filter(x=>x.v).sort((a,b)=>b.v-a.v);const mx=Math.max(1,...byC.map(x=>x.v));
+  const byU=[...new Set(l.map(e=>e.by))].map(u=>({u,v:l.filter(e=>e.by===u).reduce((a,e)=>a+(+e.amt||0),0),n:l.filter(e=>e.by===u).length})).sort((a,b)=>b.v-a.v);
+  const paid=l.filter(e=>e.status==='paid').reduce((a,e)=>a+(+e.amt||0),0),pend=tot-paid,sp=l.filter(e=>e.special).reduce((a,e)=>a+(+e.amt||0),0);
+  return hdr(L('费用统计','Expense statistics'),`<button class="icbtn" onclick="exportExp('${m}')">${ic('download')}</button>`)+`<div class="pad">
+   <div class="row gap" style="margin-top:6px"><button class="icbtn" onclick="S.exM=attShift('${m}',-1);render(false)">${ic('back')}</button><b style="flex:1;text-align:center" data-notr>${m}</b><button class="icbtn" style="transform:scaleX(-1)" onclick="S.exM=attShift('${m}',1);render(false)">${ic('back')}</button></div>
+   <div class="stats">${statT('g',numK(tot),L('本月费用合计','Total this month'))}${statT('',numK(paid),L('已付款','Paid'))}${statT('y',numK(pend),L('未付款（审核中 / 待付）','Not yet paid'))}</div>
+   <div class="xs muted" style="margin-top:6px">${L('金额单位','in')} <span data-notr>${esc(CUR())}</span> · ${L('其中特殊费用','special')} <b data-notr>${money(sp)}</b></div>
+   <div class="box"><h4>${L('按类别','By category')}</h4>${byC.map(x=>`<div style="margin-top:8px"><div class="row between sm"><span>${expName(x.k)}</span><b data-notr>${money(x.v)}</b></div><div style="height:8px;background:var(--soft);border-radius:6px;margin-top:4px"><div style="height:8px;border-radius:6px;background:var(--green);width:${x.v/mx*100}%"></div></div></div>`).join('')||`<div class="sm muted">${L('本月没有费用','No expenses this month')}</div>`}</div>
+   <div class="box"><h4>${L('按人员','By person')}</h4>${byU.map(x=>`<div class="li" style="cursor:default">${avatar(x.u,32)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(userName(x.u))}</div><div class="xs muted">${x.n} ${L('笔','item(s)')}</div></div><b data-notr>${money(x.v)}</b></div>`).join('')||`<div class="sm muted">—</div>`}</div></div>`};
+function exportExp(m){const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
+  const rows=[[L('日期','Date'),L('人员','Person'),L('类别','Category'),L('金额','Amount'),L('说明','Note'),L('特殊','Special'),L('状态','Status'),L('审批','Approved by'),L('入账','Booked by'),L('付款','Paid by')]];
+  DB.all('exp').filter(e=>e.t>=from&&e.t<to).sort((a,b)=>a.t-b.t).forEach(e=>rows.push([fdate(e.t),userName(e.by),expName(e.cat),e.amt,e.note,e.special?'✓':'',L(EXP_ST[e.status][0],EXP_ST[e.status][1]),e.ap?userName(e.ap.by):'',e.bk?userName(e.bk.by):'',e.pd?userName(e.pd.by):'']));
+  downloadFile(`expenses_${m}.csv`,csv(rows))}
+
+/* ===== 单据打印：销售单 / 出库单 / 入库单（A4，中英双语表头，含签字栏）。电脑直接打印；手机上可“打印 / 存为 PDF”或下载后打印 ===== */
+function printHTML(kind,id){const co=(DB.get('settings','app')||{}).co||{};const coName=nm(co)||BRAND();let title,no,date,rows,meta,foot,sign,showPrice=true;
+  const P=pid=>P_(pid);const B=(zh,en)=>`${zh}<br><small>${en}</small>`;
+  if(kind==='so'||kind==='out'){const d=DB.get('so',id);no=d.no;date=d.st&&kind==='out'?d.st:d.t;
+    title=kind==='so'?B('销售单','SALES ORDER'):B('出库单','DELIVERY NOTE');showPrice=kind==='so';
+    meta=[[B('客户','Customer'),ptName(d.cus)],[B('出货门店','Store'),whName(d.wh)],[B('业务员','Sales rep'),userName(d.by)],[B('付款方式','Terms'),d.pay==='credit'?'赊账 / Credit':'现款 / Cash'],...(nm(d.addr)?[[B('送货地址','Deliver to'),nm(d.addr)]]:[])];
+    const mv=kind==='out'?DB.all('moves').filter(m=>m.ref===d.id&&m.type==='so_out'):[];
+    rows=d.items.map(it=>{const p=P(it.pid);const bt=mv.filter(m=>m.pid===it.pid&&m.batch).map(m=>m.batch).join(', ');return [p.code||'',nm(p.n)+(bt?` <small>(${bt})</small>`:''),unit(p),n2(kind==='out'?(it.shipped||it.qty):it.qty),showPrice?fmtN(it.price,2):'',showPrice?fmtN(lineTotal(it),2):'']});
+    foot=showPrice?[[B('商品金额','Goods'),fmtN(itemsTotal(d),2)],...(d.frt&&d.frt.amt?[[B('运费','Freight')+(d.frt.payer==='cus'?'':' <small>(我方承担 / paid by us)</small>'),d.frt.payer==='cus'?fmtN(d.frt.amt,2):'0.00']]:[]),[B('合计','TOTAL')+` (${baseIso()})`,fmtN(docTotal(d),2)]]:[];
+    sign=kind==='so'?[B('制单','Prepared by'),B('财务审核','Finance'),B('客户确认','Customer')]:[B('仓库发货','Warehouse'),B('送货人','Delivered by'),B('客户签收','Received by')]}
+  else if(kind==='grn'){const g=DB.get('grn',id);const po=DB.get('po',g.po)||{items:[]};no=g.no;date=g.t;title=B('入库单','GOODS RECEIVED NOTE');const k=landK(po);
+    meta=[[B('供应商','Supplier'),ptName(po.sup)],[B('采购单','PO'),po.no||''],[B('入库仓库','Store'),whName(g.wh)],[B('收货人','Received by'),userName(g.by)]];
+    rows=g.items.map(it=>{const p=P(it.pid);const pi=po.items.find(x=>x.pid===it.pid)||{};const uc=(+pi.price||0)*k;return [p.code||'',nm(p.n)+(it.batch?` <small>(${it.batch}${it.exp?' · '+it.exp:''})</small>`:''),unit(p),n2(it.qty),fmtN(uc,2),fmtN(uc*it.qty,2)]});
+    const tot=g.items.reduce((a,it)=>{const pi=po.items.find(x=>x.pid===it.pid)||{};return a+(+pi.price||0)*k*it.qty},0);
+    foot=[[B('到岸成本合计','Landed cost total')+` (${baseIso()})`,fmtN(tot,2)]];sign=[B('仓库收货','Warehouse'),B('采购','Purchasing'),B('财务','Finance')]}
+  const css=`body{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#111;margin:0;padding:28px 32px;font-size:13px}h1{font-size:22px;margin:0;text-align:center;line-height:1.2}h1 small{font-size:12px;letter-spacing:3px;color:#555}
+   .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0B7A4B;padding-bottom:10px;margin-bottom:14px}.co{font-size:16px;font-weight:800}.no{text-align:right;font-size:12px}.no b{font-size:15px}
+   table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #444;padding:6px 7px;text-align:left;vertical-align:top}th{background:#EEF5F0;font-size:12px;line-height:1.25}th small,td small{color:#555;font-weight:400}
+   .meta td:nth-child(odd){width:16%;background:#FAFAF7;font-weight:700;font-size:12px}.num{text-align:right;white-space:nowrap}.foot td{font-weight:700}.sign{display:flex;gap:18px;margin-top:36px}.sign div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;text-align:center}
+   .pf{margin-top:18px;font-size:11px;color:#666;text-align:center}@media print{body{padding:10mm}@page{size:A4;margin:8mm}}`;
+  const metaRows=[];for(let i=0;i<meta.length;i+=2)metaRows.push(`<tr><td>${meta[i][0]}</td><td>${esc(meta[i][1])}</td>${meta[i+1]?`<td>${meta[i+1][0]}</td><td>${esc(meta[i+1][1])}</td>`:'<td></td><td></td>'}</tr>`);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(no)}</title><style>${css}</style></head><body>
+   <div class="top"><div class="co">${esc(coName)}</div><h1>${title}</h1><div class="no">${'No.'} <b>${esc(no)}</b><br>${new Date(date).toLocaleString('zh-CN')}</div></div>
+   <table class="meta">${metaRows.join('')}</table>
+   <table><tr><th>#</th><th>${B('编码','Code')}</th><th>${B('品名','Item')}</th><th>${B('单位','Unit')}</th><th class="num">${B('数量','Qty')}</th>${showPrice?`<th class="num">${B(kind==='grn'?'到岸单价':'单价',kind==='grn'?'Landed cost':'Price')}</th><th class="num">${B('金额','Amount')}</th>`:''}</tr>
+    ${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r[0])}</td><td>${r[1]}</td><td>${esc(r[2])}</td><td class="num">${r[3]}</td>${showPrice?`<td class="num">${r[4]}</td><td class="num">${r[5]}</td>`:''}</tr>`).join('')}
+    ${foot.map(f=>`<tr class="foot"><td colspan="${showPrice?6:4}" class="num">${f[0]}</td><td class="num">${f[1]}</td></tr>`).join('')}</table>
+   <div class="sign">${sign.map(s=>`<div>${s}</div>`).join('')}</div><div class="pf">${esc(BRAND())} · ${new Date().toLocaleString('zh-CN')}</div></body></html>`}
+function printDoc(kind,id){const h=printHTML(kind,id);const no=(h.match(/<title>(.*?)<\/title>/)||[])[1]||'doc';
+  openSheet(`<div class="sh">${L('打印单据','Print document')}</div><div class="sm muted" data-notr>${esc(no)}</div>
+   <iframe id="pvF" style="width:100%;height:52vh;border:1px solid var(--line);border-radius:12px;margin-top:10px;background:#fff"></iframe>
+   <div class="row gap" style="margin-top:12px"><button class="bigbtn ghost" style="flex:1" onclick="downloadFile('${esc(no)}.html',window._pvH,'text/html;charset=utf-8')">${ic('download',18)} ${L('下载','Download')}</button><button class="bigbtn" style="flex:1" onclick="pvPrint()">${ic('print',18)} ${L('打印 / 存为 PDF','Print / save PDF')}</button></div>`);
+  window._pvH=h;setTimeout(()=>{const f=$('#pvF');if(f)f.srcdoc=h},60)}
+function pvPrint(){const f=$('#pvF');try{if(f&&f.contentWindow&&f.contentWindow.print){f.contentWindow.focus();f.contentWindow.print();return}}catch(e){}
+  const w=window.open('','_blank');if(w){w.document.write(window._pvH);w.document.close();setTimeout(()=>w.print(),400)}else downloadFile('document.html',window._pvH,'text/html;charset=utf-8')}
+
+/* ===== 工作台：本职位能用的全部功能（底部导航只放 5 个） ===== */
+V.work=()=>{const t=[];const b=n=>n?`<span class="badge b-red" style="position:absolute;top:10px;right:10px">${n}</span>`:'';
+  const T=(cond,bg,icon,title,sub,fn,n)=>{if(cond)t.push(`<div class="wtile" style="background:${bg};position:relative" onclick="${fn}"><div class="wti">${ic(icon)}</div><div style="min-width:0"><div class="b">${title}</div><div class="wsub">${sub}</div></div>${b(n)}</div>`)};
+  T(can('_docs'),'var(--blue)','doc',L('单据','Orders'),L('采购 · 销售 · 入库 · 出库 · 盘点','Purchase · sales · in · out · counts'),"tab('docs')",todoCount());
+  T(can('stock'),'var(--green)','box',L('库存','Stock'),L('商品 · 分类 · 库存数量','Items · categories · quantities'),"tab('stock')");
+  T(can('fin'),'var(--purple)','calc',L('财务','Finance'),L('应收 · 应付 · 资金日记账','Receivables · payables · cash book'),"tab('fin')",finTodo());
+  T(true,'#C0532B','receipt',L('费用报销','Expenses'),L('办公费 · 外勤报销 · 杂费','Office · field claims · sundries'),"go('exp')",expTodo());
+  T(can('att'),'#0E7C86','pin',L('外勤打卡','Field check-in'),L('定位 · 水印照片','Location · watermarked photo'),"tab('att')");
+  T(can('att_view'),'#3D4A5C','clock',L('考勤统计','Attendance'),L('外勤出勤与打卡记录','Field attendance & records'),"go('att_stats')");
+  T(can('logi'),'var(--orange)','truck',L('物流跟踪','Logistics'),L('在途 · 签收 · 异常','In transit · delivered · issues'),"tab('logi')",DB.all('ships').filter(s=>s.status==='exception').length);
+  T(can('logi'),'#2367B0','calc',L('运费计算器','Freight calculator'),L('运费 + 清关费 + 其他费用','Freight + clearance + other'),"go('logi_svc')");
+  T(can('report'),'#7B4FA0','chart',L('报表','Reports'),L('销售 · 成本 · 运营费用','Sales · costs · operating expenses'),"go('report')");
+  T(can('_pt'),'#5C6B2E','user',L('客户与供应商','Customers & suppliers'),L('新增 · 修改 · 删除','Add · edit · delete'),"go('m_partners')");
+  T(can('mgmt'),'#161616','gear',L('后台管理','Management'),L('账号 · 门店 · 设置','Accounts · stores · settings'),"tab('mgmt')");
+  return `<div class="pad" style="padding-top:16px"><div class="ptitle">${L('工作台','Work')}</div><div class="wtiles" style="margin-top:14px">${t.join('')}</div></div>`};
 /* 空白开始：没有商品时的引导 */
 function startBox(){const cp=canProd();return `<div class="box" style="margin-top:14px;text-align:center;padding:26px 18px"><div style="font-size:40px">📦</div><div class="b" style="font-size:18px;margin-top:6px">${L('还没有商品','No items yet')}</div>
   <div class="sm muted" style="margin-top:6px;line-height:1.7">${cp?L('先建好商品分类（如：摩托车、配件、手机），再添加商品，可同时录入现有库存数量。','Set up categories (e.g. motorcycles, parts, phones), then add items with the quantity you have now.'):L('请采购主管或总经理先添加商品。','Ask purchasing or the GM to add items first.')}</div>
@@ -220,7 +504,7 @@ function setupBox(){const s=DB.get('settings','app')||{};const done=LS.get('setu
   const n=steps.filter(x=>x[0]).length;if(done||n===steps.length)return '';
   return `<div class="box" style="margin-top:14px;border:2px solid var(--green)"><div class="row between"><b style="font-size:17px">${L('开始使用','Get started')}</b><span class="badge b-green">${n} / ${steps.length}</span></div>
    <div class="xs muted" style="margin-top:4px">${L('按顺序完成这几步，就可以正式开单了','Finish these steps and you are ready to go')}</div>
-   ${steps.map((x,i)=>`<div class="li" onclick="${x[2]}"><span style="width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:13px;font-weight:800;${x[0]?'background:var(--green);color:#fff':'background:var(--soft);color:var(--ink)'}">${x[0]?'✓':i+1}</span><span class="sm ${x[0]?'muted':'b'}" style="flex:1;${x[0]?'text-decoration:line-through':''}">${x[1]}</span>${x[0]?'':ic('chev',14)}</div>`).join('')}
+   ${steps.map((x,i)=>`<div class="li" onclick="${x[2]}"><span style="width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;${x[0]?'background:var(--green);color:#fff':'background:var(--soft);color:var(--ink)'}">${x[0]?'✓':i+1}</span><span class="sm ${x[0]?'muted':'b'}" style="flex:1;${x[0]?'text-decoration:line-through':''}">${x[1]}</span>${x[0]?'':ic('chev',14)}</div>`).join('')}
    <div style="text-align:right;margin-top:6px"><a class="xs muted" style="cursor:pointer" onclick="LS.set('setupDone',1);render(false)">${L('不再显示','Hide')}</a></div></div>`}
 function deptBoard(F,x){const card=(role,lines,fn)=>`<div class="box dcard ${role==='sales'?'dk':''}" style="--dc:${ROLE_COLOR[role]}" onclick="${fn}"><div class="row between"><b class="dtt one">${roleName(role)}</b>${ic('chev',14)}</div>${lines.map(l=>`<div class="row between" style="margin-top:7px;gap:6px"><span class="xs one dl">${l[0]}</span><b class="sm ${l[2]?'dwarn':''}" data-notr style="white-space:nowrap">${l[1]}</b></div>`).join('')}</div>`;
   const mon=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const poM=DB.all('po').filter(p=>p.t>=mon&&p.status!=='draft'&&p.status!=='cancel').reduce((a,p)=>a+docTotal(p),0);
@@ -243,7 +527,7 @@ V.stock=()=>{const sm=stockMap();const q=S.stQ.trim().toLowerCase();const W=S.st
   if(S.stF!=='all')list=list.filter(x=>S.stF==='low'?(x.s==='low'||x.s==='out'):x.s===S.stF);
   const cats=catList(),unc=DB.all('products').some(p=>!catKey(p.cat));if(S.stC!=='all')list=list.filter(({p})=>S.stC==='_'?!catKey(p.cat):catKey(p.cat)===S.stC);
   if(!DB.all('products').length)return `<div class="pad" style="padding-top:16px"><div class="ptitle">${L('库存','Stock')}</div>${startBox()}</div>`;
-  const val=list.reduce((a,x)=>a+x.qty*(can('cost')?x.p.cost:x.p.price),0);
+  const val=list.reduce((a,x)=>a+x.qty*(can('cost')?avgCost(x.p.id):x.p.price),0);
   return `<div class="pad" style="padding-top:16px"><div class="row between"><div class="ptitle">${L('库存','Stock')}</div><div class="row" style="gap:8px">${canProd()?`<button class="pill g" onclick="prodEdit()">${ic('plus',16)} ${L('商品','Item')}</button>`:''}${can('take')?`<button class="pill w" onclick="go('take')">${ic('clip',16)} ${L('盘点','Count')}</button>`:''}</div></div>
    <div class="searchbar">${ic('search')}<input id="stQ" placeholder="${L('商品名称 / 编码 / 条码','Name / code / barcode')}" value="${esc(S.stQ)}" oninput="S.stQ=this.value;clearTimeout(window._sq);window._sq=setTimeout(()=>{render(false);const i=$('#stQ');i.focus();i.setSelectionRange(i.value.length,i.value.length)},300)"><button class="scan" onclick="scanLookup()" aria-label="scan">${ic('scan',18)}</button></div>
    <div class="chips">${[['all',L('全部门店','All stores')]].concat(activeWh().map(w=>[w.id,nm(w.n)])).map(([k,t])=>`<span class="chip ${S.stW===k?'on':''}" onclick="S.stW='${k}';render(false)">${esc(t)}</span>`).join('')}</div>
@@ -334,15 +618,15 @@ document.addEventListener('transitionend',e=>{if(e.target.id==='sheet'&&!sheetOn
 
 /* ================= 单据中心 ================= */
 S.docSeg=null;S.docF='all';
-V.docs=()=>{const segs=[];if(can('po')||can('po_recv'))segs.push(['po',L('采购','Purchase')]);if(can('so')||can('so_ship'))segs.push(['so',L('销售','Sales')]);
-  if(can('pr')||can('sr')||can('pr_exec')||can('sr_exec'))segs.push(['ret',L('退货','Returns')]);if(can('take'))segs.push(['take',L('盘点','Counts')]);
-  if(!segs.some(s=>s[0]===S.docSeg))S.docSeg=(can('so_ship')&&!can('po_recv'))?'so':segs[0][0];const seg=S.docSeg;
+V.docs=()=>{const segs=[];const dv=can('docs_view');if(can('po')||can('po_recv')||dv)segs.push(['po',L('采购','Purchase')]);if(can('so')||can('so_ship')||own('so_fin')||dv)segs.push(['so',L('销售','Sales')]);
+  if(can('pr')||can('sr')||can('pr_exec')||can('sr_exec'))segs.push(['ret',L('退货','Returns')]);if(can('take')||own('tk_fin')||can('tk_final'))segs.push(['take',L('盘点','Counts')]);
+  if(!segs.length)return emptyBox('doc',L('没有可查看的单据','No documents'));if(!segs.some(s=>s[0]===S.docSeg))S.docSeg=(can('so_ship')&&!can('po_recv'))||own('so_fin')?'so':segs[0][0];const seg=S.docSeg;
   let body='',add='';
   if(seg==='po'){const st=['all','draft','ordered','received','done'];if(!st.includes(S.docF))S.docF='all';
     const l=DB.all('po').filter(d=>S.docF==='all'||d.status===S.docF).sort((a,b)=>b.t-a.t);
     add=can('po')?`<button class="pill g" onclick="go('po_new')">${ic('plus',16)} ${L('新建采购单','New PO')}</button>`:can('po_recv')?`<button class="pill g" onclick="go('recv_pick')">${ic('in',16)} ${L('采购入库','Receive')}</button>`:'';
     body=`<div class="chips">${st.map(k=>`<span class="chip ${S.docF===k?'on':''}" onclick="S.docF='${k}';render(false)">${k==='all'?L('全部','All'):L(PO_ST[k][0],PO_ST[k][1])} <span class="n">${k==='all'?DB.all('po').length:DB.all('po').filter(d=>d.status===k).length}</span></span>`).join('')}</div><div style="margin-top:12px">${l.map(d=>docCard('po',d)).join('')||emptyBox('doc',L('暂无采购单','No purchase orders'))}</div>`}
-  else if(seg==='so'){const st=['all','draft','submitted','shipped','done'];if(!st.includes(S.docF))S.docF='all';
+  else if(seg==='so'){const st=['all','draft','submitted','credit_gm','approved','shipped','done','rejected'];if(!st.includes(S.docF))S.docF='all';
     const l=DB.all('so').filter(d=>S.docF==='all'||d.status===S.docF).sort((a,b)=>b.t-a.t).slice(0,80);
     add=can('so')?`<button class="pill g" onclick="go('so_new')">${ic('plus',16)} ${L('销售开单','New sale')}</button>`:'';
     body=`<div class="chips">${st.map(k=>`<span class="chip ${S.docF===k?'on':''}" onclick="S.docF='${k}';render(false)">${k==='all'?L('全部','All'):L(SO_ST[k][0],SO_ST[k][1])} <span class="n">${k==='all'?DB.all('so').length:DB.all('so').filter(d=>d.status===k).length}</span></span>`).join('')}</div><div style="margin-top:12px">${l.map(d=>docCard('so',d)).join('')||emptyBox('doc',L('暂无销售单','No sales orders'))}</div>`}
@@ -368,13 +652,35 @@ V.po_new=()=>{if(!S.form||S.form.kind!=='po'||S.form._v!==S.params.id+'|'+S.para
    <div class="fld"><label>${L('供应商','Supplier')}</label><div class="row gap">${partnerSel('sup',F.sup,"S.form.sup=this.value")}<button class="icbtn" onclick="newPartner('sup',id=>{S.form.sup=id;render(false)})">${ic('plus')}</button><button class="icbtn" title="${L('管理 / 删除','Manage / delete')}" onclick="go('m_partners',{t:'sup'})">${ic('edit')}</button></div></div>
    <div class="fld"><label>${L('入库仓库','Receiving warehouse')}</label>${whSel(F.wh,"S.form.wh=this.value;render(false)")}</div>
    <div class="sec-h" style="margin-bottom:0">${L('采购商品','Items')} <span class="sm muted">${F.items.length}</span></div>${itemsEditor('po')}
+   ${poFeesEditor()}
    <div class="fld"><label>${L('备注','Note')}</label><textarea class="inp" oninput="S.form.note=this.value">${esc(nm(F.note))}</textarea></div></div>
   <div class="bbar"><div class="total"><span class="l">${L('合计','Total')}</span><span class="v" id="ftotal" data-notr>${moneyBase(docTotal(F))}</span></div><button class="bigbtn ghost" onclick="savePO('draft')">${L('存草稿','Save draft')}</button><button class="bigbtn" onclick="savePO('ordered')">${L('提交下单','Place order')}</button></div>`};
+/* 采购附加费用：运费、清关费、其他（本币），计入应付和商品到岸成本；可从运费计算器带入 */
+const FEE_K={freight:['运费','Freight'],clear:['清关费','Clearance'],other:['其他费用','Other']};
+const feeName=f=>(f.n?f.n:L(FEE_K[f.k||'other'][0],FEE_K[f.k||'other'][1]));
+function poFeesEditor(){const F=S.form;F.fees=F.fees||[];
+  return `<div class="box" style="margin-top:12px;padding:12px 14px"><div class="row between"><b class="sm">${L('附加费用（运费 / 清关费 / 其他）','Extra costs (freight / clearance / other)')}</b><a class="xs" style="color:var(--green);font-weight:700;cursor:pointer" onclick="feeFromCalc()">${ic('calc',13)} ${L('从运费计算器带入','From calculator')}</a></div>
+   <div class="xs muted" style="margin-top:2px">${L('计入应付总额，并按金额比例分摊进商品成本，方便核算','Added to the amount payable and spread into item cost')}</div>
+   ${F.fees.map((f,i)=>`<div class="row gap" style="margin-top:8px;align-items:center"><select class="inp" style="width:96px;flex:none;padding:8px 4px;background:var(--soft)" onchange="S.form.fees[${i}].k=this.value">${Object.keys(FEE_K).map(k=>`<option value="${k}" ${f.k===k?'selected':''}>${L(FEE_K[k][0],FEE_K[k][1])}</option>`).join('')}</select>
+     <input class="inp" style="flex:1;min-width:0;padding:8px;background:var(--soft)" value="${esc(f.n||'')}" placeholder="${L('说明（可选）','Note (optional)')}" oninput="S.form.fees[${i}].n=this.value">
+     <input class="inp" type="number" inputmode="decimal" style="width:96px;flex:none;padding:8px;background:var(--soft)" value="${f.amt||''}" placeholder="${esc(CUR())}" oninput="S.form.fees[${i}].amt=+this.value;$('#ftotal').textContent=moneyBase(docTotal(S.form))">
+     <button class="icbtn" style="width:32px;height:32px;flex:none" onclick="S.form.fees.splice(${i},1);render(false)">${ic('x',14)}</button></div>`).join('')}
+   <a class="sm" style="display:inline-block;margin-top:8px;color:var(--green);font-weight:700;cursor:pointer" onclick="S.form.fees.push({k:'clear',n:'',amt:0});render(false)">+ ${L('添加费用','Add a cost')}</a></div>`}
+function feeFromCalc(){fcInit();const f=S.fc,r=frRate(f.mode);const x=frCost(f.mode,f.kg,f.cbm,{...r,p:+f.p||0,cur:f.cur});const F=S.form;F.fees=F.fees||[];
+  if(x.cost)F.fees.push({k:'freight',n:`${L(MODES[f.mode][0],MODES[f.mode][1])} ${n2(x.q)} ${frUnitName(x.unit)}`,amt:Math.round(toBase(x.cost,f.cur)*100)/100});
+  f.clr.filter(c=>+c.q&&+c.p).forEach(c=>F.fees.push({k:'clear',n:`${n2(c.q)} ${c.u}`,amt:Math.round(toBase(c.q*c.p,c.cur)*100)/100}));
+  f.oth.filter(o=>+o.a).forEach(o=>F.fees.push({k:'other',n:o.n||'',amt:Math.round(toBase(o.a,o.cur)*100)/100}));toast(L('已带入运费计算器的费用','Costs added from the calculator'),false);render(false)}
+/* 到岸成本系数 = (货款 + 附加费用) / 货款；平均成本按入库记录的到岸单价加权 */
+const landK=d=>{const it=itemsTotal(d);const fe=(d.fees||[]).reduce((a,f)=>a+(+f.amt||0),0);return it>0?(it+fe)/it:1};
+let _acV=-1,_acM={};
+function avgCost(pid){if(_acV!==DB.ver){_acV=DB.ver;_acM={}}if(pid in _acM)return _acM[pid];const p=P_(pid);let q=0,v=0;
+  DB.all('moves').forEach(m=>{if(m.pid!==pid||m.qty<=0)return;if(m.type==='po_in'){const c=m.uc!=null?+m.uc:(+p.cost||0);q+=m.qty;v+=m.qty*c}else if(m.type==='init'){q+=m.qty;v+=m.qty*(+p.cost||0)}});
+  return _acM[pid]=q>0?v/q:(+p.cost||0)}
 function savePO(st){const F=S.form;if(!F.sup)return toast(L('请选择供应商','Choose a supplier'));const items=F.items.filter(i=>+i.qty>0);if(!items.length)return toast(L('请添加商品','Add at least one item'));
-  const d=DB.put('po',{...F,kind:undefined,_v:undefined,items:items.map(i=>({...i,qty:+i.qty,price:+i.price,recv:+i.recv||0})),status:st,no:F.no||genNo('PO'),t:F.t||Date.now()});S.form=null;
+  const d=DB.put('po',{...F,kind:undefined,_v:undefined,fees:(F.fees||[]).filter(f=>+f.amt>0).map(f=>({k:f.k,n:f.n||'',amt:+f.amt})),items:items.map(i=>({...i,qty:+i.qty,price:+i.price,recv:+i.recv||0})),status:st,no:F.no||genNo('PO'),t:F.t||Date.now()});S.form=null;
   toast(st==='draft'?L('草稿已保存','Draft saved'):S.online?L('已下单','Order placed'):L('已暂存本机，联网后自动提交','Saved offline — will submit when online'));finish('po_view',{id:d.id})}
 function steps(flow,cur,M){const i=flow.indexOf(cur);return `<div class="steps">${flow.map((s,k)=>`<div class="st ${k<=i?'ok':''}"><b>${k<i?'✓':k+1}</b>${L(M[s][0],M[s][1])}</div>`).join('')}</div>`}
-V.po_view=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('')+emptyBox('doc',L('单据不存在','Not found'));
+V.po_view=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('')+emptyBox('doc',L('单据不存在','Not found'));const feeBox=(d.fees||[]).length?`<div class="box"><h4>${L('附加费用（计入商品到岸成本）','Extra costs (in landed cost)')}</h4>${d.fees.map(f=>`<div class="row between sm" style="margin-top:6px"><span>${esc(feeName(f))}</span><b data-notr>${money(f.amt)}</b></div>`).join('')}<div class="xs muted" style="margin-top:6px">${L('按商品金额比例分摊：每 1 元货款分摊 ','Spread by value: each 1.00 of goods carries ')}${(landK(d)-1).toFixed(3)}</div></div>`:'';
   const grns=DB.all('grn').filter(g=>g.po===d.id);const shs=DB.all('ships').filter(s=>s.ref===d.id);const acts=[];
   if(d.status==='draft'&&can('po')){acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('po_new',{id:'${d.id}'})">${L('编辑','Edit')}</button>`,`<button class="bigbtn" onclick="setSt('po','${d.id}','ordered')">${L('提交下单','Place order')}</button>`)}
   if(d.status==='ordered'&&can('po_recv'))acts.push(`<button class="bigbtn" onclick="S.form=null;go('recv',{id:'${d.id}'})">${ic('in',18)} ${L('采购入库','Receive')}</button>`);
@@ -388,8 +694,8 @@ V.po_view=()=>{const d=DB.get('po',S.params.id);if(!d)return hdr('')+emptyBox('d
     ${nm(d.note)?`<div class="note-y" style="margin-top:12px">${esc(nm(d.note))}</div>`:''}${d._q?`<div class="note-y" style="margin-top:12px">${ic('cloud',15)} ${L('暂存本机，联网后自动提交','Saved on this phone — submits when online')}</div>`:''}</div>
    <div class="box"><h4>${L('商品明细','Items')}<span class="sm muted">${L('已入库 / 订购','Received / ordered')}</span></h4>${d.items.map(it=>{const p=P_(it.pid);return `<div class="li" onclick="go('product',{id:'${it.pid}'})">${thumb(p,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(p.n))}</div><div class="xs muted" data-notr>${n2(it.qty)} × ${n2(it.price)} = ${n2(lineTotal(it))}</div></div><b class="${(+it.recv||0)>=it.qty?'green':''}" data-notr>${n2(+it.recv||0)}/${n2(it.qty)}</b></div>`}).join('')}
     <div class="row between" style="margin-top:10px"><span class="muted">${L('合计','Total')}</span><b style="font-size:18px" data-notr>${money(docTotal(d))}</b></div></div>
-   ${grns.length?`<div class="box"><h4>${L('入库记录','Receipts')}</h4>${grns.map(g=>`<div class="li" style="cursor:default"><div class="qi" style="background:var(--lime);color:var(--green)">${ic('in',18)}</div><div style="flex:1;min-width:0"><div class="b sm" data-notr>${esc(g.no)}</div><div class="xs muted">${fdate(g.t)} · ${esc(userName(g.by))}</div></div><b data-notr>${n2(g.items.reduce((a,i)=>a+i.qty,0))}</b></div>`).join('')}</div>`:''}
-   ${shipBox(shs,'in','po',d.id)}</div>${acts.length?`<div class="bbar">${acts.join('')}</div>`:''}`};
+   ${grns.length?`<div class="box"><h4>${L('入库记录','Receipts')}</h4>${grns.map(g=>`<div class="li" style="cursor:default"><div class="qi" style="background:var(--lime);color:var(--green)">${ic('in',18)}</div><div style="flex:1;min-width:0"><div class="b sm" data-notr>${esc(g.no)}</div><div class="xs muted">${fdate(g.t)} · ${esc(userName(g.by))}</div></div><b data-notr>${n2(g.items.reduce((a,i)=>a+i.qty,0))}</b><button class="pill w" style="margin-left:8px" onclick="printDoc('grn','${g.id}')">${ic('print',14)} ${L('入库单','GRN')}</button></div>`).join('')}</div>`:''}
+   ${feeBox}${shipBox(shs,'in','po',d.id)}</div>${acts.length?`<div class="bbar">${acts.join('')}</div>`:''}`};
 function setSt(k,id,st){const d=DB.get(k,id);DB.put(k,{...d,status:st});toast(L('已更新','Updated'));render(false)}
 function shipBox(shs,dir,refKind,ref){if(!can('logi')&&!shs.length)return '';
   return `<div class="box"><h4>${L('物流跟踪','Logistics')}${can('logi')?`<a class="sm green b" style="cursor:pointer" onclick="S.form=null;go('ship_new',{dir:'${dir}',refKind:'${refKind}',ref:'${ref}'})">+ ${L('添加物流','Add shipment')}</a>`:''}</h4>${shs.map(shipRow).join('')||`<div class="sm muted">${L('还没有物流信息','No shipment yet')}</div>`}</div>`}
@@ -417,7 +723,7 @@ function doRecv(){const F=S.form;const d=DB.get('po',F.po);const lines=F.lines.f
   for(const l of lines){if(P_(l.pid).batch&&!l.exp)return toast(L('请填写有效期：','Enter expiry for: ')+pName(l.pid))}
   const over=lines.find(l=>+l.qty>l.rem);
   const go2=()=>{const g=DB.put('grn',{no:genNo('GR'),po:d.id,wh:F.wh,t:Date.now(),items:lines.map(l=>({pid:l.pid,qty:+l.qty,batch:l.batch||'',exp:l.exp||''}))});
-    lines.forEach(l=>addMove({pid:l.pid,wh:F.wh,qty:+l.qty,type:'po_in',ref:g.id,batch:l.batch||'',exp:l.exp||''}));
+    const k=landK(d);lines.forEach(l=>{const it=d.items.find(x=>x.pid===l.pid)||{};addMove({pid:l.pid,wh:F.wh,qty:+l.qty,type:'po_in',ref:g.id,batch:l.batch||'',exp:l.exp||'',uc:Math.round((+it.price||0)*k*100)/100})});
     const items=d.items.map(it=>{const l=lines.find(x=>x.pid===it.pid);return l?{...it,recv:(+it.recv||0)+(+l.qty)}:it});
     const all=items.every(it=>(+it.recv||0)>=it.qty);DB.put('po',{...d,items,status:all?'received':'ordered'});S.form=null;Alerts.low(false);
     closeSheet(true);toast(all?L('已全部入库','Fully received'):L('已部分入库','Partly received'));finish('po_view',{id:d.id})};
@@ -482,28 +788,68 @@ V.so_new=()=>{if(!S.form||S.form.kind!=='so'||S.form._v!==S.params.id+'|'+S.para
    <div class="fld"><label>${L('客户','Customer')}</label><div class="row gap">${partnerSel('cus',F.cus,"S.form.cus=this.value")}<button class="icbtn" onclick="newPartner('cus',id=>{S.form.cus=id;render(false)})">${ic('plus')}</button><button class="icbtn" title="${L('管理 / 删除','Manage / delete')}" onclick="go('m_partners',{t:'cus'})">${ic('edit')}</button></div></div>
    <div class="fld"><label>${L('出货门店','Ship from store')}</label>${whSel(F.wh,"S.form.wh=this.value;render(false)")}</div>
    <div class="sec-h" style="margin-bottom:0">${L('商品','Items')} <span class="sm muted">${F.items.length}</span></div>${itemsEditor('so')}
+   <div class="fld"><label>${L('付款方式','Payment terms')} <span class="xs muted">${(F.pay||'cash')==='credit'?L('赊账：财务审核 + 总经理审批后出库','credit: finance + GM approve before shipping'):L('现款：财务确认收款后出库','cash: ships after finance confirms payment')}</span></label><div class="seg" style="margin-top:0">${[['cash',L('现款','Cash')],['credit',L('赊账','Credit')]].map(([k,t])=>`<button class="${(F.pay||'cash')===k?'on':''}" onclick="S.form.pay='${k}';render(false)">${t}</button>`).join('')}</div></div>
+   <div class="fld"><label>${L('运费','Freight')} <span class="xs muted">${((F.frt||{}).payer)==='cus'?L('加到货款里向客户收取','added to the customer’s total'):((F.frt||{}).payer)==='us'?L('计入公司运营成本','counted as company cost'):''}</span></label><div class="seg" style="margin-top:0">${[['none',L('无','None')],['cus',L('对方承担','Customer')],['us',L('我方承担','Us')]].map(([k,t])=>`<button class="${((F.frt||{}).payer||'none')===k?'on':''}" onclick="S.form.frt={...(S.form.frt||{amt:0}),payer:'${k}'};render(false)">${t}</button>`).join('')}</div>
+    ${(F.frt||{}).payer&&F.frt.payer!=='none'?`<div class="row gap" style="margin-top:8px;align-items:center"><input class="inp" type="number" inputmode="decimal" value="${F.frt.amt||''}" placeholder="${L('运费金额','Freight amount')} (${esc(CUR())})" oninput="S.form.frt.amt=+this.value;$('#ftotal').textContent=moneyBase(docTotal(S.form))"><button class="pill w" style="flex:none" onclick="go('logi_svc')">${ic('calc',14)} ${L('计算器','Calculator')}</button></div>`:''}</div>
    <div class="fld"><label>${L('送货地址','Delivery address')}</label><input class="inp" value="${esc(nm(F.addr))}" oninput="S.form.addr=this.value" placeholder="${L('客户自提可不填','Leave empty for pickup')}"></div>
    <div class="fld"><label>${L('备注','Note')}</label><textarea class="inp" oninput="S.form.note=this.value">${esc(nm(F.note))}</textarea></div></div>
   <div class="bbar"><div class="total"><span class="l">${L('合计','Total')}</span><span class="v" id="ftotal" data-notr>${moneyBase(docTotal(F))}</span></div><button class="bigbtn ghost" onclick="saveSO('draft')">${L('保存','Save')}</button><button class="bigbtn" onclick="saveSO('submitted')">${L('提交','Submit')}</button></div>`};
 function saveSO(st){const F=S.form;if(!F.cus)return toast(L('请选择客户','Choose a customer'));const items=F.items.filter(i=>+i.qty>0);if(!items.length)return toast(L('请添加商品','Add at least one item'));
-  const d=DB.put('so',{...F,kind:undefined,_v:undefined,items:items.map(i=>({...i,qty:+i.qty,price:+i.price})),status:st,no:F.no||genNo('SO'),t:F.t||Date.now()});S.form=null;
-  toast(st==='draft'?L('已保存草稿','Draft saved'):S.online?L('已提交，库管将安排出库','Submitted — the warehouse will ship it'):L('已暂存本机，联网后自动提交','Saved offline — will submit when online'));finish('so_view',{id:d.id})}
+    const frt=F.frt&&F.frt.payer&&F.frt.payer!=='none'?{payer:F.frt.payer,amt:+F.frt.amt||0}:null;if(frt&&!frt.amt&&st!=='draft')return toast(L('请填写运费金额','Enter the freight amount'));
+  const d=DB.put('so',{...F,kind:undefined,_v:undefined,pay:F.pay||'cash',frt,rj:st==='submitted'?'':F.rj,items:items.map(i=>({...i,qty:+i.qty,price:+i.price})),status:st,no:F.no||genNo('SO'),t:F.t||Date.now()});S.form=null;
+  toast(st==='draft'?L('已保存草稿','Draft saved'):!S.online?L('已暂存本机，联网后自动提交','Saved offline — will submit when online'):(F.pay==='credit'?L('已提交：财务审核 → 总经理审批 → 仓库出库','Submitted: finance → GM → warehouse'):L('已提交：财务确认收款后仓库出库','Submitted: ships after finance confirms payment')));finish('so_view',{id:d.id})}
 V.so_view=()=>{const d=DB.get('so',S.params.id);if(!d)return hdr('')+emptyBox('doc',L('单据不存在','Not found'));const shs=DB.all('ships').filter(s=>s.ref===d.id);const rets=DB.all('sr').filter(r=>r.so===d.id);const acts=[];
+  if(d.status==='rejected'&&can('so'))acts.push(`<button class="bigbtn" onclick="S.form=null;go('so_new',{id:'${d.id}'})">${L('修改后重新提交','Edit & resubmit')}</button>`);
+  if(d.status==='submitted'&&own('so_fin'))acts.push(`<button class="bigbtn" onclick="soFin('${d.id}')">${ic('calc',18)} ${d.pay==='credit'?L('赊账审核','Review credit'):L('确认收款','Confirm payment')}</button>`);
+  if(d.status==='credit_gm'&&S.me.role==='gm')acts.push(`<button class="bigbtn" onclick="soGm('${d.id}')">${ic('check',18)} ${L('审批赊账','Approve credit')}</button>`);
   if(d.status==='draft'&&can('so'))acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('so_new',{id:'${d.id}'})">${L('编辑','Edit')}</button>`,`<button class="bigbtn" onclick="setSt('so','${d.id}','submitted')">${L('提交','Submit')}</button>`);
-  if(d.status==='submitted'&&can('so_ship'))acts.push(`<button class="bigbtn" onclick="shipSheet('${d.id}')">${ic('out',18)} ${L('确认发货','Confirm shipment')}</button>`);
-  if(d.status==='submitted'&&can('so')&&!can('so_ship'))acts.push(`<button class="bigbtn ghost" onclick="setSt('so','${d.id}','draft')">${L('撤回修改','Withdraw')}</button>`);
+  if(d.status==='approved'&&can('so_ship'))acts.push(`<button class="bigbtn" onclick="shipSheet('${d.id}')">${ic('out',18)} ${L('确认发货','Confirm shipment')}</button>`);
+  if(['submitted','credit_gm'].includes(d.status)&&can('so')&&d.by===S.me.id)acts.push(`<button class="bigbtn ghost" onclick="setSt('so','${d.id}','draft')">${L('撤回修改','Withdraw')}</button>`);
   if(d.status==='shipped'&&(can('so')||can('so_ship')))acts.push(`<button class="bigbtn" onclick="setSt('so','${d.id}','done')">${L('确认完成','Mark complete')}</button>`);
   if(['shipped','done'].includes(d.status)&&can('sr'))acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('sr_new',{so:'${d.id}'})">${ic('ret',18)} ${L('退货','Return')}</button>`);
-  return hdr(L('销售单','Sales order'),`<button class="icbtn" onclick="copyText('${d.no}')">${ic('copy')}</button>`)+`<div class="pad">
-   <div class="box" style="margin-top:6px"><div class="row between"><div class="b" style="font-size:18px" data-notr>${esc(d.no)}</div>${stB(SO_ST,d.status)}</div>${d.status!=='cancel'?steps(['draft','submitted','shipped','done'],d.status,SO_ST):''}
+  return hdr(L('销售单','Sales order'),`<div class="row gap6"><button class="icbtn" onclick="printDoc('so','${d.id}')" title="${L('打印销售单','Print sales order')}">${ic('print')}</button><button class="icbtn" onclick="copyText('${d.no}')">${ic('copy')}</button></div>`)+`<div class="pad">
+   ${['shipped','done'].includes(d.status)?`<button class="bigbtn ghost" style="width:100%;margin-top:6px;height:46px;font-size:14px" onclick="printDoc('out','${d.id}')">${ic('print',16)} ${L('打印出库单（送货签收）','Print delivery note')}</button>`:''}
+   <div class="box" style="margin-top:6px"><div class="row between"><div class="b" style="font-size:18px" data-notr>${esc(d.no)}</div>${stB(SO_ST,d.status)}</div>${!['cancel','rejected'].includes(d.status)?steps(d.pay==='credit'?['draft','submitted','credit_gm','approved','shipped','done']:['draft','submitted','approved','shipped','done'],d.status,SO_ST):''}
+    ${d.status==='rejected'?`<div class="note-r" style="margin-top:10px">${L('驳回原因：','Rejected: ')}${esc(d.rj||'')}</div>`:''}
+    <div class="xs muted" style="margin-top:10px">${d.pay==='credit'?L('赊账：业务员提交 → 财务审核 → 总经理审批 → 仓库出库','Credit: sales → finance → GM → warehouse'):L('现款：业务员提交 → 财务确认收款 → 仓库出库','Cash: sales → finance confirms payment → warehouse')}</div>
+    ${d.fin?`<div class="xs muted" style="margin-top:4px">${ic('check',12)} ${L('财务','Finance')}：${esc(userName(d.fin.by))} · ${fdate(d.fin.t)}${d.fin.note?' · '+esc(d.fin.note):''}</div>`:''}${d.gmok?`<div class="xs muted">${ic('check',12)} ${L('总经理','GM')}：${esc(userName(d.gmok.by))} · ${fdate(d.gmok.t)}${d.gmok.note?' · '+esc(d.gmok.note):''}</div>`:''}
     <div class="kv" style="margin-top:14px"><div><div class="l">${L('客户','Customer')}</div><div class="v">${esc(ptName(d.cus))}</div></div><div><div class="l">${L('出货仓库','Warehouse')}</div><div class="v">${esc(whName(d.wh))}</div></div>
     <div><div class="l">${L('销售员','Sales rep')}</div><div class="v">${esc(userName(d.by))}</div></div><div><div class="l">${L('日期','Date')}</div><div class="v">${fdate(d.t)}</div></div>
     ${nm(d.addr)?`<div style="grid-column:1/3"><div class="l">${L('送货地址','Delivery address')}</div><div class="v">${esc(nm(d.addr))}</div></div>`:''}</div>
     ${d._q?`<div class="note-y" style="margin-top:12px">${ic('cloud',15)} ${L('暂存本机，联网后自动提交','Saved on this phone — submits when online')}</div>`:''}</div>
    <div class="box"><h4>${L('商品明细','Items')}</h4>${d.items.map(it=>{const p=P_(it.pid);return `<div class="li" onclick="go('product',{id:'${it.pid}'})">${thumb(p,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nm(p.n))}</div><div class="xs muted" data-notr>${n2(it.qty)} ${esc(unit(p))} × ${n2(it.price)}${it.ret?` · <span class="red">${L('已退','returned')} ${n2(it.ret)}</span>`:''}</div></div><b data-notr>${n2(lineTotal(it))}</b></div>`}).join('')}
-    <div class="row between" style="margin-top:10px"><span class="muted">${L('合计','Total')}</span><b style="font-size:20px" data-notr>${money(docTotal(d))}</b></div></div>
+    ${d.frt&&d.frt.amt?`<div class="row between" style="margin-top:8px"><span class="sm muted">${L('运费','Freight')} · ${d.frt.payer==='cus'?L('对方承担','customer pays'):L('我方承担（不计入货款）','we pay (not charged)')}</span><b class="sm" data-notr>${money(d.frt.amt)}</b></div>`:''}
+    <div class="row between" style="margin-top:10px"><span class="muted">${L('合计','Total')} · ${d.pay==='credit'?L('赊账','credit'):L('现款','cash')}</span><b style="font-size:20px" data-notr>${money(docTotal(d))}</b></div></div>
    ${rets.length?`<div class="box"><h4>${L('退货记录','Returns')}</h4>${rets.map(r=>`<div class="li" onclick="retSheet('sr','${r.id}')"><div class="qi" style="background:var(--lilac);color:var(--purple)">${ic('ret',18)}</div><div style="flex:1;min-width:0"><div class="b sm" data-notr>${esc(r.no)}</div><div class="xs muted">${fdate(r.t)} · ${esc(nm(r.reason)||'')}</div></div><b data-notr>${n2(r.items.reduce((a,i)=>a+i.qty,0))}</b></div>`).join('')}</div>`:''}
    ${d.status!=='draft'?shipBox(shs,'out','so',d.id):''}</div>${acts.length?`<div class="bbar">${acts.join('')}</div>`:''}`};
+/* 销售单审核：现款 = 财务确认收款后放行；赊账 = 财务审核 → 总经理审批后放行。仓库只能出库“待出库”的单 */
+function soHead(d){const owe=arDocs().filter(s=>s.cus===d.cus&&s.id!==d.id).reduce((a,s)=>a+arOf(s).bal,0);
+  return `<div class="sm muted"><span data-notr>${esc(d.no)}</span> · ${esc(ptName(d.cus))} · ${L('业务员','Sales')} ${esc(userName(d.by))}</div>
+   <div style="font-size:30px;font-weight:800;margin-top:10px" data-notr>${moneyBase(docTotal(d))}</div>
+   <div class="kv" style="margin-top:10px"><div><div class="l">${L('付款方式','Terms')}</div><div class="v">${d.pay==='credit'?L('赊账','Credit'):L('现款','Cash')}</div></div><div><div class="l">${L('该客户其他欠款','Other amounts owed')}</div><div class="v ${owe>0?'red':''}" data-notr>${money(owe)}</div></div>
+   ${d.frt&&d.frt.amt?`<div><div class="l">${L('运费','Freight')}</div><div class="v" data-notr>${money(d.frt.amt)} · ${d.frt.payer==='cus'?L('对方承担','customer'):L('我方承担','us')}</div></div>`:''}<div><div class="l">${L('已收','Received')}</div><div class="v" data-notr>${money(arOf(d).got)}</div></div></div>`}
+function soFin(id){const d=DB.get('so',id);if(!own('so_fin')||d.status!=='submitted')return;const x=arOf(d);
+  openSheet(`<div class="sh">${d.pay==='credit'?L('赊账审核','Credit review'):L('确认收款','Confirm payment')}</div>${soHead(d)}
+   ${d.pay==='credit'?`<div class="fld"><label>${L('审核意见','Comment')}</label><input class="inp" id="sfN" style="background:var(--card)" placeholder="${L('如：信用良好，30 天内回款','e.g. good history, pays within 30 days')}"></div>
+    <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soFinOk('${id}')">${L('同意，交总经理审批','Approve → GM')}</button></div>`
+   :`<div class="fld"><label>${L('实收金额','Amount received')} (${esc(baseIso())})</label><input class="inp" id="sfA" type="number" inputmode="decimal" style="background:var(--card)" value="${(+x.bal).toFixed(2)}"></div>
+    <div class="chips wrap" style="margin-top:10px">${Object.keys(PM).map((k,i)=>`<span class="chip ${i?'':'on'}" data-m="${k}" onclick="pmPick(this,'#sfR',true)">${pmName(k)}</span>`).join('')}</div>
+    <input class="inp" id="sfR" style="margin-top:10px;background:var(--card)" placeholder="${refLabel('cash')}${L('（必填）',' (required)')}">
+    <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soFinOk('${id}')">${ic('check',18)} ${L('已收款，放行出库','Paid — release')}</button></div>`}`)}
+function soFinOk(id){const d=DB.get('so',id);if(d.status!=='submitted')return toast(L('这张单已处理','Already handled'));
+  if(d.pay==='credit'){DB.put('so',{...d,status:'credit_gm',fin:{by:S.me.id,t:Date.now(),note:($('#sfN').value||'').trim()}});closeSheet(true);toast(L('已审核，交总经理审批','Sent to the GM'),false);return render(false)}
+  const amt=+$('#sfA').value,ref=$('#sfR').value.trim(),m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash',bal=arOf(d).bal;
+  if(!(amt>0))return toast(L('请填写实收金额','Enter the amount received'));if(amt+0.005<bal)return toast(L('现款订单须全额收款；未收全请驳回，让业务员改为赊账','Cash orders must be paid in full — reject so sales can switch to credit'));
+  if(ref.length<2)return toast(L('请填写','Enter the ')+refLabel(m));
+  DB.put('fin',{type:'rcv',ref:id,refKind:'so',amount:+amt.toFixed(2),method:m,note:ref,pref:ref,status:'verified',t:Date.now()});
+  DB.put('so',{...d,status:'approved',fin:{by:S.me.id,t:Date.now(),note:L('已收 ','received ')+money(amt)}});closeSheet(true);toast(L('已确认收款，仓库可以出库了','Payment confirmed — the warehouse can ship'),false);render(false)}
+function soGm(id){const d=DB.get('so',id);if(S.me.role!=='gm'||d.status!=='credit_gm')return;
+  openSheet(`<div class="sh">${L('审批赊账','Approve credit')}</div>${soHead(d)}${d.fin?`<div class="note-g" style="margin-top:10px">${L('财务意见：','Finance: ')}${esc(userName(d.fin.by))} · ${esc(d.fin.note||L('同意','approved'))}</div>`:''}
+   <div class="fld"><label>${L('审批意见','Comment')}</label><input class="inp" id="sgN" style="background:var(--card)"></div>
+   <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soGmOk('${id}')">${ic('check',18)} ${L('批准赊账','Approve')}</button></div>`)}
+function soGmOk(id){const d=DB.get('so',id);if(d.status!=='credit_gm')return;DB.put('so',{...d,status:'approved',gmok:{by:S.me.id,t:Date.now(),note:($('#sgN').value||'').trim()}});closeSheet(true);toast(L('已批准，仓库可以出库了','Approved — the warehouse can ship'),false);render(false)}
+function soReject(id){openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="srR" style="margin-top:10px;background:var(--card)" placeholder="${L('如：客户欠款过多，请先收款','e.g. too much owed — collect first')}">
+  <button class="bigbtn" style="width:100%;margin-top:14px;background:var(--red);color:#fff" onclick="const r=$('#srR').value.trim();if(r.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('so',{...DB.get('so','${id}'),status:'rejected',rj:r,rjBy:S.me.id});closeSheet(true);toast(L('已驳回，业务员会收到通知','Rejected — sales has been notified'));render(false)">${L('确认驳回','Reject')}</button>`)}
 /* 销售出库：确认发货 → 按先到期先出扣减库存，可同时登记物流 */
 function shipSheet(id){const d=DB.get('so',id);const chk=d.items.map(it=>({it,av:qtyOf(it.pid,d.wh)}));const short=chk.filter(x=>x.av<x.it.qty);
   openSheet(`<div class="sh">${L('确认发货','Confirm shipment')}</div><div class="sm muted" data-notr>${esc(d.no)} · ${esc(ptName(d.cus))}</div>
@@ -537,14 +883,18 @@ function tkSet(i,v){const it=S.form.items[i];it.real=v===''?'':+v;const df=it.re
 function saveTake(){const F=S.form;const items=F.items.filter(i=>i.real!=='');if(!items.length)return toast(L('请至少录入一个实盘数','Enter at least one count'));
   const d=DB.put('counts',{no:genNo('ST'),wh:F.wh,status:'pending',t:Date.now(),note:F.note,items:items.map(i=>({pid:i.pid,sys:i.sys,real:+i.real}))});S.form=null;
   toast(L('已提交，等待管理员审核','Submitted for admin review'));finish('take_view',{id:d.id})}
-V.take_view=()=>{const d=DB.get('counts',S.params.id);if(!d)return hdr('');const df=d.items.filter(i=>i.real!==i.sys);const val=df.reduce((a,i)=>a+(i.real-i.sys)*(P_(i.pid).cost||0),0);
+V.take_view=()=>{const d=DB.get('counts',S.params.id);if(!d)return hdr('');const df=d.items.filter(i=>i.real!==i.sys);const val=df.reduce((a,i)=>a+(i.real-i.sys)*avgCost(i.pid),0);
   return hdr(L('盘点单','Stock count'))+`<div class="pad"><div class="box" style="margin-top:6px"><div class="row between"><div class="b" style="font-size:18px" data-notr>${esc(d.no)}</div>${stB(TK_ST,d.status)}</div>
    <div class="kv" style="margin-top:12px"><div><div class="l">${L('仓库','Warehouse')}</div><div class="v">${esc(whName(d.wh))}</div></div><div><div class="l">${L('盘点人','Counted by')}</div><div class="v">${esc(userName(d.by))}</div></div>
    <div><div class="l">${L('差异项','Differences')}</div><div class="v ${df.length?'red':''}">${df.length} / ${d.items.length}</div></div>${can('cost')?`<div><div class="l">${L('差异金额','Diff value')}</div><div class="v ${val<0?'red':'green'}" data-notr>${money(val)}</div></div>`:''}</div>
-   ${d.status==='pending'?`<div class="note-y" style="margin-top:12px">${L('差异记录尚未改动库存，审核通过后自动生成盘点调整。','Stock not yet changed. An adjustment is posted when approved.')}</div>`:''}${d.rv?`<div class="xs muted" style="margin-top:10px">${L('审核','Reviewed')}: ${esc(userName(d.rv))} · ${fdate(d.rt)} ${d.rr?'· '+esc(d.rr):''}</div>`:''}</div>
+   <div class="xs muted" style="margin-top:12px">${L('流程：库管盘点 → 财务复核 → 运营经理或总经理终审 → 自动调整库存（互相制约）','Flow: warehouse counts → finance checks → operations manager or GM approves → stock adjusted')}</div>
+   ${['pending','fin_ok'].includes(d.status)?`<div class="note-y" style="margin-top:8px">${L('差异尚未改动库存，终审通过后自动生成盘点调整。','Stock not yet changed; adjusted after final approval.')}</div>`:''}
+   ${d.fv?`<div class="xs muted" style="margin-top:8px">${ic('check',12)} ${L('财务复核','Finance')}：${esc(userName(d.fv))} · ${fdate(d.ft)}</div>`:''}${d.rv?`<div class="xs muted">${ic('check',12)} ${L('终审','Final')}：${esc(userName(d.rv))} · ${fdate(d.rt)} ${d.rr?'· '+esc(d.rr):''}</div>`:''}</div>
    <div class="box"><h4>${L('明细','Lines')}<span class="sm muted">${L('账面 → 实盘','Book → Count')}</span></h4>${d.items.map(i=>{const x=i.real-i.sys;return `<div class="li" style="cursor:default"><div style="flex:1;min-width:0"><div class="b sm one">${esc(pName(i.pid))}</div><div class="xs muted" data-notr>${n2(i.sys)} → ${n2(i.real)}</div></div><b class="${x>0?'green':x<0?'red':'muted'}" data-notr>${x>0?'+':''}${n2(x)}</b></div>`}).join('')||emptyBox('clip',L('暂无明细','No lines'))}</div></div>
-   ${d.status==='pending'&&S.me.role==='gm'?`<div class="bbar"><button class="bigbtn ghost" onclick="tkReview('${d.id}',false)">${L('驳回','Reject')}</button><button class="bigbtn" onclick="tkReview('${d.id}',true)">${L('审核通过','Approve')}</button></div>`:''}`};
+   ${(d.status==='pending'&&own('tk_fin'))||(d.status==='fin_ok'&&can('tk_final'))?`<div class="bbar"><button class="bigbtn ghost" onclick="tkReview('${d.id}',false)">${L('驳回','Reject')}</button><button class="bigbtn" onclick="tkReview('${d.id}',true)">${d.status==='pending'?L('财务复核通过','Finance OK'):L('终审通过，调整库存','Approve & adjust')}</button></div>`:''}`};
 function tkReview(id,ok){const d=DB.get('counts',id);
+  if(ok&&d.status==='pending'){if(!own('tk_fin'))return;DB.put('counts',{...d,status:'fin_ok',fv:S.me.id,ft:Date.now()});toast(L('财务已复核，交运营经理或总经理终审','Checked — sent for final approval'),false);return render(false)}
+  if(ok&&d.status!=='fin_ok')return;if(ok&&!can('tk_final'))return;
   if(ok){d.items.forEach(i=>{const x=i.real-i.sys;if(!x)return;const p=P_(i.pid);let batch='';if(p.batch){const b=batchesOf(i.pid,d.wh).filter(b=>b.q>0);batch=x<0?(b[0]||{}).batch||'':(b[b.length-1]||{}).batch||''}addMove({pid:i.pid,wh:d.wh,qty:x,type:'adj',ref:d.id,batch})});
     DB.put('counts',{...d,status:'approved',rv:S.me.id,rt:Date.now()});toast(L('已审核，库存已调整','Approved — stock adjusted'));Alerts.low(false);render(false)}
   else openSheet(`<div class="sh">${L('驳回原因','Reason for rejection')}</div><input class="inp" id="rjR" style="margin-top:10px" placeholder="${L('如：请复盘第 3 排货架','e.g. please recount aisle 3')}"><button class="bigbtn red" style="width:100%;margin-top:16px" onclick="DB.put('counts',{...DB.get('counts','${id}'),status:'rejected',rv:S.me.id,rt:Date.now(),rr:$('#rjR').value});closeSheet();toast(L('已驳回','Rejected'));render(false)">${L('确认驳回','Reject')}</button>`)}
@@ -564,7 +914,7 @@ function arOf(s){const fs=DB.all('fin').filter(f=>f.type==='rcv'&&f.ref===s.id&&
 function apOf(p){const fs=DB.all('fin').filter(f=>f.type==='pay'&&f.ref===p.id&&f.status!=='void');const paid=fs.filter(f=>f.status==='paid').reduce((a,f)=>a+(+f.amount||0),0);
   const sum=st=>fs.filter(f=>f.status===st).reduce((a,f)=>a+(+f.amount||0),0);const appr=sum('approved'),req=sum('req'),tot=poNet(p);
   return {tot,paid,appr,req,bal:Math.max(0,tot-paid),free:Math.max(0,tot-paid-appr-req),fs}}
-const arDocs=()=>DB.all('so').filter(s=>['submitted','shipped','done'].includes(s.status));
+const arDocs=()=>DB.all('so').filter(s=>['submitted','credit_gm','approved','shipped','done'].includes(s.status));
 const apDocs=()=>DB.all('po').filter(p=>['ordered','received','done'].includes(p.status));
 function finSum(){const t0=dayStart(),m0=+new Date(new Date().getFullYear(),new Date().getMonth(),1);const fin=DB.all('fin').filter(f=>f.status!=='void');
   const rc=fin.filter(f=>f.type==='rcv'),pd=fin.filter(f=>f.type==='pay'&&f.status==='paid');
@@ -698,7 +1048,7 @@ V.logi=()=>{const all=DB.all('ships');const F={all:()=>true,transit:s=>['pending
    <div class="seg">${[['all',L('全部','All')],['transit',L('在途','Transit')],['delivering',L('派送','Delivery')],['delivered',L('签收','Done')],['exception',L('异常','Issue')]].map(([k,t])=>`<button class="${S.logiF===k?'on':''}" onclick="S.logiF='${k}';render(false)">${t}</button>`).join('')}</div>
    <div class="chips">${[['all',L('全部方向','All')],['out',L('发货（销售）','Outbound')],['in',L('到货（采购）','Inbound')]].map(([k,t])=>`<span class="chip sm ${S.logiD===k?'on':''}" onclick="S.logiD='${k}';render(false)">${t}</span>`).join('')}</div>
    <div style="margin-top:12px">${l.map(s=>{const c=carrier(s.carrier);const late=s.eta&&s.eta<today&&s.status!=='delivered';const ref=s.ref?(DB.get(s.refKind||'so',s.ref)||{}).no:'';
-    return `<div class="wc" onclick="go('ship_view',{id:'${s.id}'})"><div class="top"><div class="row between" style="gap:8px"><h3><span class="qi" style="display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--soft)">${ic(MODES[s.mode||c.mode][2],15)}</span><span class="tt">${esc(nm(c))}</span><span class="tag">${s.dir==='in'?L('到货','In'):L('发货','Out')}</span></h3>${stB(SH_ST,s.status)}</div>
+    return `<div class="wc" onclick="go('ship_view',{id:'${s.id}'})"><div class="top"><div class="row between" style="gap:8px"><h3><span class="qi" style="display:inline-grid;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:var(--soft)">${ic(MODES[s.mode||c.mode][2],15)}</span><span class="tt">${esc(nm(c))}</span><span class="tag">${s.dir==='in'?L('到货','In'):L('发货','Out')}</span></h3>${stB(SH_ST,s.status)}</div>
      <small><span data-notr>${esc(s.trackNo||s.no)}</span>${ref?' · <span data-notr>'+esc(ref)+'</span>':''}</small><div class="sm b one" style="margin-top:4px">${esc(nm(s.from))} → ${esc(nm(s.to))}</div>
      <div class="cols"><div><span class="l">${L('预计','ETA')}</span><span class="v ${late?'red':''}">${s.eta?fdate(new Date(s.eta).getTime(),false):'—'}</span></div><div><span class="l">${L('最新','Latest')}</span><span class="v">${s.ev&&s.ev.length?esc(nm(s.ev[s.ev.length-1].place)||'—'):'—'}</span></div><div><span class="l">${L('运费','Cost')}</span><span class="v" data-notr>${n2(s.cost||0)}</span></div></div></div></div>`}).join('')||emptyBox('truck',L('暂无物流记录','No shipments'))}</div></div>
   ${can('logi')?`<div style="position:sticky;bottom:84px;display:flex;justify-content:flex-end;padding:0 20px;pointer-events:none"><button class="pill g" style="pointer-events:auto;padding:14px 18px;box-shadow:0 8px 20px rgba(11,122,75,.35)" onclick="S.form=null;go('ship_new')">${ic('plus',16)} ${L('登记物流','New shipment')}</button></div>`:''}`};
@@ -735,7 +1085,7 @@ function doShipUpd(id){const s=DB.get('ships',id);const e={t:Date.now(),st:S.su.
 V.ship_new=()=>{if(!S.form||S.form.kind!=='ship'){const p=S.params;const ref=p.ref&&DB.get(p.refKind,p.ref);
     S.form={kind:'ship',dir:p.dir||'out',refKind:p.refKind||'',ref:p.ref||'',carrier:p.dir==='in'?'cosco':'own',mode:p.dir==='in'?'sea':'road',trackNo:'',container:'',from:'',to:'',eta:fday(Date.now()+(p.dir==='in'?20:1)*864e5),cost:'',driver:''};
     if(ref){if(p.refKind==='so'){S.form.from=whName(ref.wh);S.form.to=nm(ref.addr)||ptName(ref.cus)}else{S.form.from=nm((DB.get('partners',ref.sup)||{}).city);S.form.to=whName(ref.wh)}}}
-  const F=S.form;if(!F.costManual&&(+F.kg||+F.cbm))F.cost=frCost(F.mode,F.kg,F.cbm).costB;const refs=F.dir==='out'?DB.all('so').filter(s=>['submitted','shipped'].includes(s.status)):DB.all('po').filter(p=>['ordered','received'].includes(p.status));
+  const F=S.form;if(!F.costManual&&(+F.kg||+F.cbm))F.cost=frCost(F.mode,F.kg,F.cbm).costB;const refs=F.dir==='out'?DB.all('so').filter(s=>['approved','shipped'].includes(s.status)):DB.all('po').filter(p=>['ordered','received'].includes(p.status));
   const fld=(k,t,ph,type)=>`<div class="fld"><label>${t}</label><input class="inp" ${type?`type="${type}"`:''} value="${esc(F[k])}" placeholder="${ph||''}" oninput="S.form.${k}=this.value"></div>`;
   return hdr(L('登记物流','New shipment'))+`<div class="pad"><div class="seg">${[['out',L('发货（销售）','Outbound')],['in',L('到货（采购）','Inbound')]].map(([k,t])=>`<button class="${F.dir===k?'on':''}" onclick="S.form.dir='${k}';S.form.ref='';S.form.refKind='${k==='out'?'so':'po'}';render(false)">${t}</button>`).join('')}</div>
    <div class="fld"><label>${L('关联单据（可选）','Linked order (optional)')}</label><select class="inp" onchange="S.form.ref=this.value;S.form.refKind='${F.dir==='out'?'so':'po'}'"><option value="">${L('不关联','None')}</option>${refs.map(r=>`<option value="${r.id}" ${r.id===F.ref?'selected':''}>${esc(r.no)} · ${esc(ptName(r.cus||r.sup))}</option>`).join('')}</select></div>
@@ -815,15 +1165,15 @@ function bookAdmin(id){const b=DB.get('svc',id);openSheet(`<div class="sh">${L('
 /* ================= 报表（各部门只看自己范围内的数据） ================= */
 S.rpR='today';S.rpK='val';
 V.report=()=>{const from=S.rpR==='today'?dayStart():S.rpR==='week'?dayStart()-((new Date().getDay()+6)%7)*864e5:+new Date(new Date().getFullYear(),new Date().getMonth(),1);
-  const r=S.me.role;const seeSales=['gm','sales','acct'].includes(r),seeStock=can('stock'),seeProfit=can('profit'),seeBuy=['gm','buyer','acct'].includes(r);
+  const r=S.me.role;const seeSales=['gm','ops','sales','acct'].includes(r),seeStock=can('stock'),seeProfit=can('profit'),seeBuy=['gm','ops','buyer','acct'].includes(r);
   const so=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=from);const sales=so.reduce((a,s)=>a+docTotal(s),0);
   const mv=DB.all('moves').filter(m=>m.t>=from);const outN=new Set(mv.filter(m=>m.type==='so_out'||m.type==='po_ret').map(m=>m.ref)).size,inN=new Set(mv.filter(m=>m.type==='po_in'||m.type==='so_ret').map(m=>m.ref)).size;
-  const cogs=mv.filter(m=>m.type==='so_out').reduce((a,m)=>a+(-m.qty)*(P_(m.pid).cost||0),0)-mv.filter(m=>m.type==='so_ret').reduce((a,m)=>a+m.qty*(P_(m.pid).cost||0),0);
-  const freight=DB.all('ships').filter(s=>s.t>=from).reduce((a,s)=>a+(+s.cost||0),0);
+  const cogs=mv.filter(m=>m.type==='so_out').reduce((a,m)=>a+(-m.qty)*avgCost(m.pid),0)-mv.filter(m=>m.type==='so_ret').reduce((a,m)=>a+m.qty*avgCost(m.pid),0);
+  const freight=so.filter(s=>s.frt&&s.frt.payer==='us').reduce((a,s)=>a+(+s.frt.amt||0),0);const opex=DB.all('exp').filter(e=>['booked','paid'].includes(e.status)&&(e.bt||e.t)>=from).reduce((a,e)=>a+(+e.amt||0),0);
   const buys=DB.all('po').filter(p=>p.status!=='draft'&&p.status!=='cancel'&&p.t>=from).reduce((a,p)=>a+docTotal(p),0);
   const days=[...Array(7)].map((_,i)=>{const d0=dayStart()-(6-i)*864e5;const v=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=d0&&s.t<d0+864e5).reduce((a,s)=>a+docTotal(s),0);return {d0,v}});
   const mx=Math.max(1,...days.map(d=>d.v));
-  const rank=DB.all('products').map(p=>{const q=qtyOf(p.id);return {p,q,v:q*(can('cost')?p.cost:p.price)}}).sort((a,b)=>S.rpK==='val'?b.v-a.v:b.q-a.q).slice(0,20);const rmx=Math.max(1,...rank.map(x=>S.rpK==='val'?x.v:x.q));
+  const rank=DB.all('products').map(p=>{const q=qtyOf(p.id);return {p,q,v:q*(can('cost')?avgCost(p.id):p.price)}}).sort((a,b)=>S.rpK==='val'?b.v-a.v:b.q-a.q).slice(0,20);const rmx=Math.max(1,...rank.map(x=>S.rpK==='val'?x.v:x.q));
   const last=DB.all('moves').sort((a,b)=>b.t-a.t).slice(0,10);
   return hdr(L('简易报表','Reports'),`<button class="icbtn" onclick="exportSheet()">${ic('download')}</button>`)+`<div class="pad">
    <div class="seg">${[['today',L('今日','Today')],['week',L('本周','This week')],['month',L('本月','This month')]].map(([k,t])=>`<button class="${S.rpR===k?'on':''}" onclick="S.rpR='${k}';render(false)">${t}</button>`).join('')}</div>
@@ -831,7 +1181,9 @@ V.report=()=>{const from=S.rpR==='today'?dayStart():S.rpR==='week'?dayStart()-((
    ${seeProfit?`<div class="box"><h4>${L('利润（估算）','Profit (estimate)')}<span class="sm muted" data-notr>${esc(CUR())}</span></h4><div class="kv">
      <div><div class="l">${L('销售收入','Revenue')}</div><div class="v" data-notr>${money(sales)}</div></div><div><div class="l">${L('销售成本','Cost of goods')}</div><div class="v" data-notr>${money(cogs)}</div></div>
      <div><div class="l">${L('毛利','Gross profit')}</div><div class="v ${sales-cogs<0?'red':'green'}" data-notr>${money(sales-cogs)}</div></div><div><div class="l">${L('毛利率','Margin')}</div><div class="v" data-notr>${sales?((sales-cogs)/sales*100).toFixed(1):'0.0'}%</div></div>
-     <div><div class="l">${L('物流运费','Freight')}</div><div class="v" data-notr>${money(freight)}</div></div><div><div class="l">${L('扣运费后','After freight')}</div><div class="v" data-notr>${money(sales-cogs-freight)}</div></div></div>
+     <div><div class="l">${L('我方承担运费','Freight we paid')}</div><div class="v" data-notr>${money(freight)}</div></div><div><div class="l">${L('运营费用（费用报销）','Operating expenses')}</div><div class="v" data-notr>${money(opex)}</div></div>
+     <div style="grid-column:1/3"><div class="l">${L('净利润（估算）= 毛利 − 我方运费 − 运营费用','Net profit (est.) = gross − freight − expenses')}</div><div class="v ${sales-cogs-freight-opex<0?'red':'green'}" style="font-size:20px" data-notr>${money(sales-cogs-freight-opex)}</div></div></div>
+     <div class="xs muted" style="margin-top:8px">${L('销售成本按“含运费、清关费的到岸成本”加权平均计算','Cost of goods uses the weighted average landed cost (incl. freight & clearance)')}</div>
      </div>`:''}
    ${seeSales?`<div class="box"><h4>${L('近 7 天销售额','Sales, last 7 days')}<span class="sm muted" data-notr>${moneyK(days.reduce((a,d)=>a+d.v,0))}</span></h4><div class="bars">${days.map((d,i)=>`<div class="bc"><span class="bv" data-notr>${d.v?numK(d.v):''}</span><div class="bar ${i===6?'on':''}" style="height:${Math.max(3,d.v/mx*88)}%"></div><span class="bl">${i===6?L('今天','Today'):(new Date(d.d0).getMonth()+1)+'/'+new Date(d.d0).getDate()}</span></div>`).join('')}</div></div>`:''}
    ${seeStock?`<div class="box"><h4>${L('商品库存排行 前 20','Top 20 by stock')}<span class="seg" style="margin:0;padding:3px;background:var(--soft)">${[['val',L('金额','Value')],['qty',L('数量','Qty')]].map(([k,t])=>`<button style="padding:5px 10px;font-size:12px" class="${S.rpK===k?'on':''}" onclick="S.rpK='${k}';render(false)">${t}</button>`).join('')}</span></h4>
@@ -1082,7 +1434,7 @@ async function ptSave(){const p=S.ept;if(!(p.n.zh||'').trim()&&!(p.n.en||'').tri
 /* 有未结清的应收 / 应付或未完成的单据时不能删除；删除后历史单据仍显示名称，新单据里不再出现 */
 function ptBusy(id){const p=DB.get('partners',id);const r=[];
   if(p.type==='sup'){const ps=DB.all('po').filter(o=>o.sup===id&&o.status!=='cancel');if(ps.some(o=>['draft','ordered'].includes(o.status)))r.push(L('有未完成的采购单','open purchase orders'));if(ps.reduce((a,o)=>a+apOf(o).bal,0)>0.005)r.push(L('还有未付清的货款','unpaid balance'))}
-  else{const ss=DB.all('so').filter(o=>o.cus===id&&o.status!=='cancel');if(ss.some(o=>['draft','submitted'].includes(o.status)))r.push(L('有未完成的销售单','open sales orders'));if(ss.reduce((a,o)=>a+arOf(o).bal,0)>0.005)r.push(L('还有未收清的货款','unpaid balance'))}
+  else{const ss=DB.all('so').filter(o=>o.cus===id&&o.status!=='cancel');if(ss.some(o=>['draft','submitted','credit_gm','approved','rejected'].includes(o.status)))r.push(L('有未完成的销售单','open sales orders'));if(ss.reduce((a,o)=>a+arOf(o).bal,0)>0.005)r.push(L('还有未收清的货款','unpaid balance'))}
   return r}
 function ptDel(id){const p=DB.get('partners',id);if(!p)return;if(!ptTypes().includes(p.type))return toast(L('没有权限','No permission'));const b=ptBusy(id);
   if(b.length)return openSheet(`<div class="sh">${L('暂时不能删除','Cannot delete yet')}</div><div class="sm" style="margin-top:8px;line-height:1.7"><b>${esc(nmP(p.n))}</b>：${b.join('、')}。${L('请先结清或取消后再删除。','Settle or cancel them first.')}</div><button class="bigbtn" style="width:100%;margin-top:16px" onclick="closeSheet()">${L('知道了','OK')}</button>`);
@@ -1092,6 +1444,8 @@ V.m_settings=()=>{const s=DB.get('settings','app')||{id:'app',co:{zh:'',en:''}};
   return hdr(L('系统设置','Settings'))+`<div class="pad"><div class="box" style="margin-top:6px"><h4>${L('公司','Company')}</h4>
    <div class="fld"><label>${L('公司名称（中）','Company (Chinese)')}</label><input class="inp" style="background:var(--soft)" id="stCz" data-zh2en="#stCe" value="${esc((s.co||{}).zh||'')}"></div><div class="fld"><label>${L('公司名称（英）','Company (English)')}</label><input class="inp" style="background:var(--soft)" id="stCe" data-auto="1" placeholder="${L('自动生成，可修改','Auto-filled, editable')}" value="${esc((s.co||{}).en||'')}"></div>
    <div class="fld"><label>${L('结算货币（只用本国货币，全部单据和报表都用它）','Settlement currency (local currency only, used everywhere)')}</label><select class="inp" style="background:var(--soft)" id="stB">${isos.map(c=>`<option value="${c.iso}" ${c.iso===baseIso()?'selected':''}>${esc(c.sym)} ${c.iso} · ${esc(S.lang==='zh'?c.zh:c.en)}</option>`).join('')}</select></div>
+    <div class="row gap" style="margin-top:4px"><div class="fld" style="flex:1;min-width:0"><label>${L('特殊费用限额（超过需审批）','Special expense limit')}</label><input class="inp" id="stEL" type="number" inputmode="decimal" style="background:var(--soft)" value="${expLimit()}"></div>
+     <div class="fld" style="flex:1;min-width:0"><label>${L('外勤上班时间（点）','Field work start (hour)')}</label><input class="inp" id="stWS" type="number" min="0" max="23" style="background:var(--soft)" value="${+(s.workStart||9)}"></div></div>
    <div class="xs muted" style="margin-top:6px">${L('更改结算货币不会换算已有金额，请在开始使用前设定。','Changing it does not convert existing amounts — set it before you start.')}</div>
    <button class="bigbtn" style="width:100%;margin-top:14px" onclick="coSave()">${L('保存','Save')}</button></div>
    ${S.me.role==='gm'?`<div class="box"><h4>${L('数据管理','Data')}</h4>
@@ -1107,7 +1461,7 @@ V.m_settings=()=>{const s=DB.get('settings','app')||{id:'app',co:{zh:'',en:''}};
     <div class="xs muted" style="margin-top:8px;line-height:1.6">${L('运费 = 计费量 × 单价。计费量取实际重量与体积重量中较大的：按立方米计时 1 立方米 = 1000 公斤；按公斤计时体积重量 = 体积 × 换算系数（海运 1000、空运 167、陆运 333、快递 200）。','Freight = chargeable quantity × unit price. The larger of actual weight and volume weight is charged: per m³, 1 m³ = 1000 kg; per kg, volume weight = volume × factor (sea 1000, air 167, road 333, express 200).')}</div>
     <div class="box" style="margin:12px 0 0;background:var(--soft);padding:12px"><b class="sm">${L('试算','Try it')}</b><div class="row gap" style="margin-top:8px"><div style="flex:1"><div class="xs muted">${L('重量（公斤）','Weight (kg)')}</div><input class="inp" id="frKg" type="number" inputmode="decimal" value="${S.frKg||500}" style="background:var(--card)" oninput="S.frKg=this.value;frTry()"></div><div style="flex:1"><div class="xs muted">${L('体积（立方米）','Volume (m³)')}</div><input class="inp" id="frCbm" type="number" inputmode="decimal" value="${S.frCbm||2}" style="background:var(--card)" oninput="S.frCbm=this.value;frTry()"></div></div><div id="frOut" style="margin-top:8px">${Object.keys(MODES).map(k=>frLine(k,S.frKg||500,S.frCbm||2)).join('')}</div></div></div></div>`};
 
-async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co});toast(L('已保存','Saved'),false);render(false)}
+async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co,expLimit:Math.max(0,+$('#stEL').value||1000),workStart:Math.min(23,Math.max(0,+$('#stWS').value||9))});toast(L('已保存','Saved'),false);render(false)}
 function resetSheet(){openSheet(`<div class="sh red">${L('清空业务数据','Clear business data')}</div><div class="sm" style="margin-top:8px;line-height:1.7">${L('所有商品、分类、客户、供应商、单据、库存、财务和物流记录都会被删除，不能恢复。其他部门的手机也会同步清空。请输入 <b>清空</b> 两个字确认。','All items, categories, customers, suppliers, documents, stock, finance and logistics records are deleted and cannot be restored. Other phones are cleared too. Type <b>CLEAR</b> to confirm.')}</div>
   <input class="inp" id="rsT" style="background:var(--card);margin-top:12px" autocomplete="off"><div class="sm red" id="rsE" style="margin-top:8px"></div>
   <button class="bigbtn" style="width:100%;margin-top:12px;background:var(--red);color:#fff" onclick="doReset()">${L('确认清空','Clear now')}</button>`)}

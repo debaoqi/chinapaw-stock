@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.3.1',APP_BUILD=10;
+const APP_VER='1.4.0',APP_BUILD=11;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -17,6 +17,14 @@ const isNative=()=>!!(window.Capacitor&&window.Capacitor.isNativePlatform&&windo
 
 /* ---------- 图标 ---------- */
 const ICONS={
+ chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>',
+ send:'<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+ smile:'<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
+ print:'<path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/>',
+ receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+ reply:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/>',
+ translate:'<path d="M4 5h9M8.5 3v2M6 5c.5 3 2.5 6 6 7.5M11 5c-.8 3.5-3.3 6.5-7 8"/><path d="m13 21 4-10 4 10M14.5 17.5h5"/>',
+ at:'<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
  home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
  box:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
  doc:'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
@@ -83,14 +91,23 @@ const ROLES={
  sales:{zh:'销售经理',en:'Sales Manager',code:'333333',c:'b-gold',p:['stock','so','sr','logi','report','cus']},
  keeper:{zh:'仓库主管',en:'Warehouse Manager',code:'444444',c:'b-green',p:['stock','po_recv','so_ship','take','pr_exec','sr_exec','logi','report']},
  acct:{zh:'会计',en:'Accountant',code:'555555',c:'b-purple',p:['stock','cost','report','profit','fin','fin_verify','fin_approve']},
- cashier:{zh:'出纳',en:'Cashier',code:'666666',c:'b-orange',p:['fin','fin_receive','fin_pay']}
+ cashier:{zh:'出纳',en:'Cashier',code:'666666',c:'b-orange',p:['fin','fin_receive','fin_pay']},
+ field:{zh:'外勤人员',en:'Field Sales',code:'777777',c:'b-gold',p:['stock','so','cus','att','logi']},
+ ops:{zh:'运营经理',en:'Operations Manager',code:'888888',c:'b-dark',p:['stock','report','cost','profit','fin','logi','att_view','exp_approve','tk_final','docs_view']}
 };
-const ROLE_ORDER=['gm','buyer','sales','keeper','acct','cashier'];
-function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+/* 新增权限说明：
+   att 外勤打卡 · att_view 查看考勤（总经理 / 销售经理 / 运营经理）
+   so_fin 销售单财务审核（确认收款 / 赊账初审）· tk_fin 盘点财务复核 · tk_final 盘点终审（运营经理 / 总经理）
+   exp_approve 特殊费用审批（总经理 / 运营经理）· exp_book 费用入账（会计）· 付费用由出纳（fin_pay） */
+ROLES.sales.p.push('att_view');ROLES.acct.p.push('so_fin','tk_fin','exp_book');
+const ROLE_ORDER=['gm','ops','buyer','sales','field','keeper','acct','cashier'];
+function can(p,u){u=u||S.me;if(p==='mgmt')return !!u&&(u.role==='gm'||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
+/* 职位本身的权限（不含总经理的“全部权限”）：财务复核、出纳付款等环节只属于对应职位，互相制约 */
+const own=(p,u)=>{u=u||S.me;const r=u&&ROLES[u.role];return !!r&&r.p!=='*'&&r.p.includes(p)};
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
 /* 部门：每个部门有基本职位，也可以新增职位（新职位的权限参照本部门的一个基本职位） */
-const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['gm']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
+const DEPTS=[{id:'gmo',zh:'总经办',en:"GM's office",roles:['gm','ops']},{id:'pur',zh:'采购部',en:'Purchasing',roles:['buyer']},{id:'sal',zh:'销售部',en:'Sales',roles:['sales','field']},{id:'whs',zh:'仓储部',en:'Warehouse',roles:['keeper']},{id:'fin',zh:'财务部',en:'Finance',roles:['acct','cashier']}];
 const deptOf=r=>DEPTS.find(d=>d.roles.includes(r))||DEPTS[0];
 const deptName=d=>nm(typeof d==='string'?DEPTS.find(x=>x.id===d)||{zh:d,en:d}:d);
 /* 职位列表：登录后以公司设置为准（同时存一份到手机，供登录页使用）；登录页在云端模式下用刚从云端取到的列表 */
@@ -109,14 +126,14 @@ const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   p(){return this.cloud?'c_':''},
   load(){const P=this.p(),s=LS.get(P+'db',null);KINDS.forEach(k=>this.d[k]=(s&&s[k])||[]);this.outbox=LS.get(P+'outbox',[]);this.seq=LS.get(P+'seq',0);this.lastSync=LS.get(P+'lastSync',0);this.ver++},
   /* 本机保存合并成一次（空闲时写入），连续操作不卡；关闭页面前一定写完 */
   save(now){clearTimeout(this._st);if(now)return this._save();this._st=setTimeout(()=>{(window.requestIdleCallback||setTimeout)(()=>this._save())},300)},
-  _save(){clearTimeout(this._st);const o={};KINDS.forEach(k=>o[k]=this.d[k]);const P=this.p();LS.set(P+'db',o);LS.set(P+'outbox',this.outbox);LS.set(P+'seq',this.seq);LS.set(P+'lastSync',this.lastSync)},
+  _save(){clearTimeout(this._st);const o={};KINDS.forEach(k=>o[k]=this.d[k]);if(o.msg&&o.msg.length>1500)o.msg=[...o.msg].sort((a,b)=>a.t-b.t).slice(-1500);/* 手机上只保留最近 1500 条消息，不占空间 */const P=this.p();LS.set(P+'db',o);LS.set(P+'outbox',this.outbox);LS.set(P+'seq',this.seq);LS.set(P+'lastSync',this.lastSync)},
   all(k){return (this.d[k]||[]).filter(x=>!x.del)},
   get(k,id){return (this.d[k]||[]).find(x=>x.id===id)},
   /* 写入一条记录：本机立即生效，进入待提交队列；联网后自动提交到云端 */
@@ -172,8 +189,8 @@ const Sync={timer:null,
   /* 实时自动同步：每 3 秒只问一次云端“有没有新数据”（极小的请求），有变化才下载；自己的修改保存后立即上传 */
   async head(){if(!DB.cloud||!S.token||S.syncing||!navigator.onLine)return;if(DB.outbox.length)return this.run();
     try{const h=await rpc('jxc_head',{p_token:S.token});if(h===-1){S.syncErr='session';return}if(+h>DB.seq)this.run()}catch(e){}},
-  start(){clearInterval(this.timer);const tick=()=>{if(document.visibilityState!=='visible')return;if(DB.cloud)this.head();else if(DB.outbox.length)this.run()};
-    this.timer=setInterval(tick,3000);
+  start(){clearInterval(this.timer);let n=0;const tick=()=>{n++;if(document.visibilityState!=='visible')return;if(S.view!=='chat_room'&&n%2)return;/* 聊天窗口里 1.5 秒查一次，其他页面 3 秒 */if(DB.cloud)this.head();else if(DB.outbox.length)this.run()};
+    this.timer=setInterval(tick,1500);
     addEventListener('online',()=>{S.online=true;toast(L('网络已恢复，正在自动提交','Back online, submitting…'));this.run();window.syncUI&&syncUI();window.render&&render(false)});
     addEventListener('offline',()=>{S.online=false;window.syncUI&&syncUI();window.render&&render(false)});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')this.run()})}
@@ -202,15 +219,17 @@ const mvName=t=>L((MV[t]||[t,t])[0],(MV[t]||[t,t])[1]);
 
 /* ---------- 单据状态 ---------- */
 const PO_ST={draft:['草稿','Draft','b-grey'],ordered:['已下单','Ordered','b-blue'],received:['已入库','Received','b-green'],done:['已完成','Completed','b-dark'],cancel:['已取消','Cancelled','b-grey']};
-const SO_ST={draft:['草稿','Draft','b-grey'],submitted:['待出库','To ship','b-gold'],shipped:['已出库','Shipped','b-blue'],done:['已完成','Completed','b-dark'],cancel:['已取消','Cancelled','b-grey']};
-const TK_ST={pending:['待审核','Pending','b-gold'],approved:['已审核','Approved','b-green'],rejected:['已驳回','Rejected','b-red']};
+const SO_ST={draft:['草稿','Draft','b-grey'],submitted:['待财务审核','Finance review','b-gold'],credit_gm:['赊账待总经理审批','Credit: GM review','b-gold'],approved:['待出库','To ship','b-blue'],rejected:['已驳回','Rejected','b-red'],shipped:['已出库','Shipped','b-blue'],done:['已完成','Completed','b-dark'],cancel:['已取消','Cancelled','b-grey']};
+const TK_ST={pending:['待财务复核','Finance review','b-gold'],fin_ok:['待运营 / 总经理终审','Final review','b-gold'],approved:['已审核','Approved','b-green'],rejected:['已驳回','Rejected','b-red']};
 const SH_ST={pending:['待揽收','Awaiting pickup','b-grey'],picked:['已揽收','Picked up','b-blue'],transit:['运输中','In transit','b-blue'],customs:['清关中','Customs','b-purple'],
   delivering:['派送中','Out for delivery','b-gold'],delivered:['已签收','Delivered','b-green'],exception:['异常','Exception','b-red']};
 const SH_FLOW=['pending','picked','transit','customs','delivering','delivered'];
 const stB=(M,s)=>{const x=M[s]||[s,s,'b-grey'];return `<span class="badge ${x[2]}">${L(x[0],x[1])}</span>`};
 function genNo(pre){const d=new Date();return pre+String(d.getFullYear()).slice(2)+pad2(d.getMonth()+1)+pad2(d.getDate())+'-'+Math.random().toString(36).slice(2,5).toUpperCase()}
 const lineTotal=it=>(+it.qty||0)*(+it.price||0);
-const docTotal=d=>(d.items||[]).reduce((a,i)=>a+lineTotal(i),0);
+/* 单据合计 = 商品金额 + 对方承担的运费（销售单）+ 附加费用（采购单：运费、清关费、其他） */
+const docTotal=d=>(d.items||[]).reduce((a,i)=>a+lineTotal(i),0)+(d.frt&&d.frt.payer==='cus'?(+d.frt.amt||0):0)+(d.fees||[]).reduce((a,f)=>a+(+f.amt||0),0);
+const itemsTotal=d=>(d.items||[]).reduce((a,i)=>a+lineTotal(i),0);
 
 /* ---------- 物流：承运商与官网查询地址 ---------- */
 const CARRIERS=[
@@ -397,7 +416,7 @@ async function seedDemo(){
   /* 部门账号：初始密码 = 部门代码（总经理 111111 … 出纳 666666），444444-1 是新增的第 2 个仓库主管 */
   const U=[['U1','gm','111111',{zh:'孙总',en:'GM Sun'},'W1'],['U2','buyer','222222',{zh:'李采购',en:'Li (Purchasing)'},'W1'],['U3','sales','333333',{zh:'阿玛·门萨',en:'Ama Mensah'},'W2'],
    ['U4','keeper','444444',{zh:'科乔·阿散蒂',en:'Kojo Asante'},'W1'],['U5','acct','555555',{zh:'陈会计',en:'Chen (Accounts)'},'W1'],['U6','cashier','666666',{zh:'阿贝娜',en:'Abena Owusu'},'W1'],
-   ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3']];
+   ['U7','keeper','444444-1',{zh:'亚乌（库马西）',en:'Yaw (Kumasi)'},'W3'],['U8','field','777777',{zh:'夸梅（外勤）',en:'Kwame (Field)'},'W1'],['U9','ops','888888',{zh:'周运营',en:'Zhou (Operations)'},'W1']];
   for(const u of U)d.users.push({id:u[0],role:u[1],code:u[2],name:u[3],wh:u[4],active:true,pw:await pwHash(u[0],u[2])});
   const mv=(o)=>d.moves.push({id:'dm'+d.moves.length,u:o.t,by:o.by||'U4',...o});
   const t0=now-34*D;const exp=(days)=>fday(now+days*D);
@@ -554,7 +573,7 @@ const BIZ_KINDS=()=>KINDS.filter(k=>!['users','wh','settings'].includes(k));
 async function seedBlank(){const d={};KINDS.forEach(k=>d[k]=[]);const cc=(typeof C==='function'&&C())||{};
   d.settings=[{id:'app',base:cc.iso||'GHS',country:S.country||'GH',co:{zh:'',en:''},rates:{sea:[...FR_DEF.sea],air:[...FR_DEF.air],road:[...FR_DEF.road],express:[...FR_DEF.express]},lowRule:'min',plan:{limit:1},cats:[]},{id:'codes',list:[]}];
   d.wh=[{id:'W1',n:{zh:'总店',en:'Main store'},city:{zh:'',en:''}}];
-  const U=[['U1','gm'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier']];
+  const U=[['U1','gm'],['U2','buyer'],['U3','sales'],['U4','keeper'],['U5','acct'],['U6','cashier'],['U8','field'],['U9','ops']];
   for(const [id,r] of U){const code=ROLES[r].code;d.users.push({id,role:r,code,name:{zh:ROLES[r].zh,en:ROLES[r].en},wh:'W1',active:true,pw:await pwHash(id,code)})}
   KINDS.forEach(k=>DB.d[k]=d[k]);DB.outbox=[];DB.ver++;DB.save(true)}
 /* 清空业务数据（保留账号、门店、设置）。云端由服务器统一清空，其他手机同步 */

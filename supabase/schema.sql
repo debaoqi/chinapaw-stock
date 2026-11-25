@@ -30,7 +30,7 @@ do $$ begin
   alter table jxc_users drop constraint if exists jxc_users_role_check;
   update jxc_users set role='gm' where role='admin';
   update jxc_users set code='U'||id where code is null;
-  alter table jxc_users add constraint jxc_users_role_check check (role in ('gm','buyer','sales','keeper','acct','cashier'));
+  alter table jxc_users add constraint jxc_users_role_check check (role in ('gm','ops','buyer','sales','field','keeper','acct','cashier'));
 end $$;
 create unique index if not exists jxc_users_code on jxc_users(code);
 
@@ -93,7 +93,7 @@ create or replace function jxc_user_json(u jxc_users) returns jsonb language sql
 -- 账号代码 → 部门：111111 总经理 / 222222 采购主管 / 333333 销售经理 / 444444 仓库主管 / 555555 会计 / 666666 出纳；可带“-序号”
 create or replace function jxc_role_of(p_code text) returns text language sql immutable as $$
   select case when p_code ~ '^\d{6}(-\d{1,3})?$' then case split_part(p_code,'-',1) when '111111' then 'gm' when '222222' then 'buyer' when '333333' then 'sales'
-    when '444444' then 'keeper' when '555555' then 'acct' when '666666' then 'cashier' end end $$;
+    when '444444' then 'keeper' when '555555' then 'acct' when '666666' then 'cashier' when '777777' then 'field' when '888888' then 'ops' end end $$;
 
 -- 密码是否已被其他账号使用（密码全公司唯一，登录才能识别账号）
 create or replace function jxc_pw_taken(p_pw text, p_except text) returns boolean
@@ -105,15 +105,49 @@ create or replace function jxc_can_write(p_role text, p_k text, p_d jsonb) retur
 language sql immutable as $$
   select case
     when p_k='users' then false
+    when p_k in ('chat','msg','exp') then true                       -- 沟通、费用：人人可用，具体步骤由 jxc_flow_ok 检查
+    when p_k='att' then p_role in ('field','sales','gm')              -- 外勤打卡
     when p_role='gm' then true
     when p_k in ('settings','wh') then false
-    when p_k='counts' and coalesce(p_d->>'status','') in ('approved','rejected') then false
+    when p_role='ops'    then p_k in ('counts','ships','svc') or (p_k='moves' and p_d->>'type'='adj')
     when p_role='buyer'  then p_k in ('po','partners','products','ships','svc') or (p_k='pr' and coalesce(p_d->>'status','')='pending')
-    when p_role='sales'  then p_k in ('so','partners','ships','svc') or (p_k='sr' and coalesce(p_d->>'status','')='pending')
+    when p_role in ('sales','field') then p_k in ('so','partners','ships','svc') or (p_k='sr' and coalesce(p_d->>'status','')='pending')
     when p_role='keeper' then p_k in ('po','grn','so','pr','sr','counts','ships','svc') or (p_k='moves' and p_d->>'type' in ('po_in','po_ret','so_out','so_ret','init'))
-    when p_role='acct'   then p_k='fin' and ((p_d->>'type'='rcv' and p_d->>'status'='verified') or (p_d->>'type'='pay' and p_d->>'status' in ('req','void')))
+    when p_role='acct'   then p_k in ('so','counts') or (p_k='fin' and ((p_d->>'type'='rcv' and p_d->>'status'='verified') or (p_d->>'type'='pay' and p_d->>'status' in ('req','void'))))
     when p_role='cashier' then p_k='fin' and ((p_d->>'type'='rcv' and p_d->>'status'='recorded') or (p_d->>'type'='pay' and p_d->>'status'='paid'))
     else false end $$;
+
+-- 审批流程：每一步只能由对应职位、在上一步完成后操作（互相制约）。总经理可以做任何一步
+create or replace function jxc_flow_ok(p_me jxc_users, p_k text, p_d jsonb, p_has boolean, p_od jsonb) returns boolean
+language plpgsql immutable as $$
+declare r text := p_me.role; ns text := coalesce(p_d->>'status',''); os text := p_od->>'status';
+begin
+  if p_k='msg' then return not p_has or p_od->>'by'=p_me.id; end if;                       -- 只有发送人能撤回
+  if p_k='chat' then return not p_has or jsonb_typeof(p_od->'mem')<>'array' or (p_od->'mem') ? p_me.id; end if;
+  if p_k='att' then return not p_has; end if;                                               -- 打卡记录不能修改
+  if r='gm' then return true; end if;
+  if p_k='so' then                -- 销售：业务员提交 → 财务（现款确认收款 / 赊账初审）→ 总经理（赊账）→ 仓库出库
+    if r in ('sales','field') then return (ns in ('draft','submitted') and coalesce(os,'draft') in ('draft','submitted','rejected')) or (ns='done' and os='shipped') or (ns='cancel' and coalesce(os,'draft') in ('draft','rejected')); end if;
+    if r='acct' then return os='submitted' and (ns='rejected' or (ns='approved' and coalesce(p_d->>'pay','cash')<>'credit') or (ns='credit_gm' and p_d->>'pay'='credit')); end if;
+    if r='keeper' then return (os='approved' and ns='shipped') or (os='shipped' and ns='done'); end if;
+    return false;
+  end if;
+  if p_k='counts' then            -- 盘点：库管 → 财务复核 → 运营经理 / 总经理终审
+    if r='keeper' then return ns='pending' and coalesce(os,'pending') in ('pending','rejected'); end if;
+    if r='acct' then return os='pending' and ns in ('fin_ok','rejected'); end if;
+    if r='ops' then return os='fin_ok' and ns in ('approved','rejected'); end if;
+    return false;
+  end if;
+  if p_k='exp' then               -- 费用：提交 →（特殊）总经理 / 运营经理审批 → 会计入账 → 出纳付款
+    if not p_has then return ns='submitted'; end if;
+    if p_od->>'by'=p_me.id and ((os='submitted' and ns='void') or (os='rejected' and ns='rejected')) then return true; end if;
+    if r='ops' then return os='submitted' and ns in ('approved','rejected'); end if;
+    if r='acct' then return (os='approved' or (os='submitted' and not coalesce((p_od->>'special')::boolean,false))) and ns in ('booked','rejected'); end if;
+    if r='cashier' then return os='booked' and ns='paid'; end if;
+    return false;
+  end if;
+  return true;
+end $$;
 
 -- ---------- 登录（只用密码）/ 退出 / 改密码 ----------
 -- 先删除旧版本的登录函数（v1.0 手机号登录、v1.1.0 只有密码），再创建新版：先选职位，再输入密码
@@ -172,7 +206,8 @@ language plpgsql security definer set search_path=public, extensions as $$
 declare v_me jxc_users; v_rows jsonb; v_max bigint;
 begin
   v_me := jxc_me_row(p_token);
-  select coalesce(jsonb_agg(jsonb_build_object('k',x.k,'d',x.d) order by x.seq),'[]'::jsonb), coalesce(max(x.seq),p_since)
+  -- 群聊 / 私聊只发给成员（mem 为空 = 全公司群）
+  select coalesce(jsonb_agg(jsonb_build_object('k',x.k,'d',x.d) order by x.seq) filter (where x.k not in ('chat','msg') or jsonb_typeof(x.d->'mem')<>'array' or (x.d->'mem') ? v_me.id),'[]'::jsonb), coalesce(max(x.seq),p_since)
     into v_rows, v_max from (select t.k,t.d,t.seq from jxc_docs t where t.seq > p_since order by t.seq limit 2000) x;
   -- 账号列表只在有变化时返回（与华宝相同：没变化就不重复下载）
   if p_since = 0 or exists(select 1 from jxc_users where seq > p_since) then
@@ -184,7 +219,7 @@ end $$;
 
 create or replace function jxc_push(p_token text, p_ops jsonb) returns jsonb
 language plpgsql security definer set search_path=public, extensions as $$
-declare v_me jxc_users; op jsonb; v_k text; v_id text; v_d jsonb; v_u bigint; n_ok int:=0; rej jsonb:='[]'::jsonb; v_old bigint; v_has boolean; v_plan jsonb; v_ost text;
+declare v_me jxc_users; op jsonb; v_k text; v_id text; v_d jsonb; v_u bigint; n_ok int:=0; rej jsonb:='[]'::jsonb; v_old bigint; v_has boolean; v_plan jsonb; v_ost text; v_od jsonb;
 begin
   v_me := jxc_me_row(p_token);
   for op in select * from jsonb_array_elements(p_ops) loop
@@ -199,7 +234,10 @@ begin
       v_d := (v_d - 'plan') || jsonb_build_object('plan',coalesce(v_plan,'{"limit":1}'::jsonb));
     end if;
     v_has := null;
-    select true, t.u, t.d->>'status' into v_has, v_old, v_ost from jxc_docs t where t.k=v_k and t.id=v_id;
+    v_od := null;
+    select true, t.u, t.d->>'status', t.d into v_has, v_old, v_ost, v_od from jxc_docs t where t.k=v_k and t.id=v_id;
+    if not coalesce(v_has,false) and v_k in ('msg','exp','att') then v_d := jsonb_set(v_d,'{by}',to_jsonb(v_me.id)); end if;   -- 发送人 / 申请人以登录账号为准
+    if not jxc_flow_ok(v_me,v_k,v_d,coalesce(v_has,false),v_od) then rej := rej || jsonb_build_array(v_id); continue; end if;
     -- 付款流程：会计申请(req) → 总经理批准(approved)/驳回(rejected) → 出纳付款(paid)，每一步都检查上一步状态
     if v_k='fin' and v_d->>'type'='pay' and v_me.role<>'gm' then
       if (v_me.role='acct' and v_d->>'status'='req' and coalesce(v_ost,'req') not in ('req','rejected'))
@@ -228,7 +266,7 @@ begin
   a := jxc_me_row(p_token);
   if a.role <> 'gm' and not coalesce(a.is_admin,false) then raise exception '没有后台权限 / No backend access'; end if;
   v_role := coalesce(nullif(p_user->>'role',''), case when v_id is null then jxc_role_of(v_code) else (select role from jxc_users where id=v_id) end);
-  if v_role not in ('gm','buyer','sales','keeper','acct','cashier') then raise exception '请选择职位 / Choose a position'; end if;
+  if v_role not in ('gm','ops','buyer','sales','field','keeper','acct','cashier') then raise exception '请选择职位 / Choose a position'; end if;
   if a.role <> 'gm' and (v_role='gm' or exists(select 1 from jxc_users where id=v_id and role='gm')) then raise exception '总经理账号只能由总经理修改 / Only the general manager can edit GM accounts'; end if;
   if v_id = a.id and v_role <> a.role then raise exception '不能修改自己的职位 / You cannot change your own position'; end if;
   if exists(select 1 from jxc_users where id=v_id and role='gm') and (v_role<>'gm' or not coalesce((p_user->>'active')::boolean,true))
@@ -329,20 +367,20 @@ begin
   return jsonb_build_object('limit',v_lim);
 end $$;
 
--- ---------- 首次使用：创建 6 个部门账号（初始密码 = 部门代码）。已有账号时不会重复创建 ----------
+-- ---------- 首次使用：创建 8 个部门账号（初始密码 = 部门代码）。已有账号时不会重复创建 ----------
 create or replace function jxc_bootstrap() returns text
 language plpgsql security definer set search_path=public, extensions as $$
 declare r record;
 begin
   if exists(select 1 from jxc_users) then return '已有账号，未做改动 / Accounts already exist'; end if;
   for r in select * from (values ('111111','总经理','gm'),('222222','采购主管','buyer'),('333333','销售经理','sales'),
-      ('444444','仓库主管','keeper'),('555555','会计','acct'),('666666','出纳','cashier')) v(code,name,role) loop
+      ('444444','仓库主管','keeper'),('555555','会计','acct'),('666666','出纳','cashier'),('777777','外勤人员','field'),('888888','运营经理','ops')) v(code,name,role) loop
     insert into jxc_users(code,name,role,pw_hash) values(r.code,r.name,r.role,crypt(r.code,gen_salt('bf')));
   end loop;
   -- 公司设置与第 1 个门店（初始只有 1 个门店名额）
   insert into jxc_docs(k,id,d,u) values('settings','app',jsonb_build_object('id','app','base','GHS','plan',jsonb_build_object('limit',1),'u',(extract(epoch from now())*1000)::bigint),(extract(epoch from now())*1000)::bigint) on conflict do nothing;
   insert into jxc_docs(k,id,d,u) values('wh','W1',jsonb_build_object('id','W1','n',jsonb_build_object('zh','总店','en','Main store'),'city',jsonb_build_object('zh','','en',''),'u',(extract(epoch from now())*1000)::bigint),(extract(epoch from now())*1000)::bigint) on conflict do nothing;
-  return '已创建 6 个部门账号，请登录后立即修改初始密码 / 6 department accounts created — change the starting passwords';
+  return '已创建 8 个部门账号，请登录后立即修改初始密码 / 8 department accounts created — change the starting passwords';
 end $$;
 create or replace function jxc_set_platform_pw(p_pw text) returns text
 language plpgsql security definer set search_path=public, extensions as $$
@@ -351,6 +389,17 @@ begin
   insert into jxc_platform(id,pw_hash) values(1,crypt(p_pw,gen_salt('bf'))) on conflict(id) do update set pw_hash=excluded.pw_hash;
   return '平台密码已设置 / Platform password set';
 end $$;
+-- 已在使用的公司：补建“外勤人员”“运营经理”账号（初始密码 = 部门代码，登录后请修改）
+create or replace function jxc_add_roles() returns int language plpgsql security definer set search_path=public, extensions as $$
+declare n int;
+begin
+  if not exists(select 1 from jxc_users) then return 0; end if;
+  insert into jxc_users(code,name,role,pw_hash) select v.code,v.name,v.role,crypt(v.code,gen_salt('bf')) from (values('777777','外勤人员','field'),('888888','运营经理','ops')) v(code,name,role)
+    where not exists(select 1 from jxc_users u where u.code=v.code) and not jxc_pw_taken(v.code,null);
+  get diagnostics n = row_count; return n;
+end $$;
+select jxc_add_roles();
+revoke execute on function jxc_add_roles() from public, anon, authenticated;
 -- 这些只能在 SQL Editor 里执行，网页调用不了
 revoke execute on function jxc_bootstrap() from public, anon, authenticated;
 revoke execute on function jxc_set_platform_pw(text) from public, anon, authenticated;
@@ -376,7 +425,7 @@ end $$;
 
 -- =====================================================================
 -- 最后两步（只做一次，在 SQL Editor 里单独选中运行）：
--- 1) 创建 6 个部门账号（初始密码 111111 / 222222 / 333333 / 444444 / 555555 / 666666），登录后请立即修改：
+-- 1) 创建 8 个部门账号（初始密码 111111 / 222222 / 333333 / 444444 / 555555 / 666666 / 777777 / 888888），登录后请立即修改：
 --    select jxc_bootstrap();
 -- 2) 设置平台密码（用于生成门店开通码、调整门店名额；由软件运营方本人设定，至少 8 位，不要发给任何人）：
 --    select jxc_set_platform_pw('你自己设定的平台密码');

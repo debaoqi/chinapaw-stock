@@ -21,7 +21,11 @@ async def main():
         await A.select_option('select.inp >> nth=0','C1');await A.evaluate("S.form.items[0].qty=20")
         await A.click(".bbar button >> nth=-1");await A.wait_for_timeout(700);so=await A.evaluate("S.params.id")
         await K.wait_for_timeout(500);print('keeper banner:',await K.evaluate("document.querySelector('#banner').classList.contains('on')&&document.querySelector('#banner').innerText.replace(/\\n/g,' ')"))
-        await K.evaluate(f"go('so_view',{{id:'{so}'}})");await K.wait_for_timeout(200);await K.click(".bbar button:has-text('确认发货')");await K.wait_for_timeout(200)
+        await K.evaluate(f"go('so_view',{{id:'{so}'}})");await K.wait_for_timeout(200);print('keeper can ship before finance?',await K.evaluate("!!$$('.bbar button').find(b=>b.textContent.includes('确认发货'))"))
+        await K.evaluate("S.me=(({pw,...u})=>u)(DB.get('users','U5'));render(false)");await K.wait_for_timeout(200)
+        await K.click(".bbar button:has-text('确认收款')");await K.wait_for_timeout(200);await K.fill('#sfR','RC-001');await K.click("#sheet button:has-text('已收款')");await K.wait_for_timeout(300)
+        print('after finance:',await K.evaluate(f"DB.get('so','{so}').status"),'| receipt',await K.evaluate(f"DB.all('fin').filter(f=>f.ref==='{so}').map(f=>f.status+':'+f.amount).join()"))
+        await K.evaluate("S.me=(({pw,...u})=>u)(DB.get('users','U4'));render(false)");await K.wait_for_timeout(200);await K.click(".bbar button:has-text('确认发货')");await K.wait_for_timeout(200)
         await K.click("text=确认出库，扣减库存");await K.wait_for_timeout(500);print('shipped; stock',q0,'->',await K.evaluate("qtyOf('P1','W1')"))
         # sales return: request only
         await A.evaluate(f"S.form=null;go('sr_new',{{so:'{so}'}})");await A.wait_for_timeout(200);await A.evaluate("S.form.lines[0].qty=5");await A.click(".bbar button");await A.wait_for_timeout(500)
@@ -30,6 +34,7 @@ async def main():
         await K.wait_for_timeout(400);await K.evaluate(f"retExec('sr','{sr}')");await K.wait_for_timeout(300);print('keeper received; stock',await K.evaluate("qtyOf('P1','W1')"),await K.evaluate(f"DB.get('sr','{sr}').status"))
         # finance: cashier records receipt, accountant verifies
         print('cashier:',await as_(A,'666666'))
+        so=await A.evaluate("arDocs().find(s=>arOf(s).bal>10).id")
         await A.evaluate(f"arSheet('{so}')");await A.wait_for_timeout(300);bal=await A.evaluate(f"arOf(DB.get('so','{so}')).bal")
         await A.fill('#rcA',str(round(bal/2,2)));await A.click("#sheet .chip:has-text('手机钱包')");await A.click("text=确认收款");await A.wait_for_timeout(300)
         f=await A.evaluate(f"DB.all('fin').find(x=>x.ref==='{so}')");print('receipt',f['amount'],f['method'],f['status'],'| cashier can verify?',await A.evaluate("can('fin_verify')"),'approve?',await A.evaluate("can('fin_approve')"))

@@ -5,8 +5,8 @@ async def fillpw(pg,pw):
     await pg.evaluate("p=>{const r=roleOfCode(p);if(r){S.lgRole=r;S.lgPos=null;S.lgDept=deptOf(r).id;LS.set('lgRole',r)}}",pw)
     await pg.fill('#lgPw',pw)
 
-CODES=['111111','222222','333333','444444','555555','666666','444444-1']
-VIEWS=['home','stock','docs','fin','logi','me','report','msgs','logi_svc','recv_pick','take','po_new','so_new','ship_new','pr_new','sr_new','mgmt','m_users','m_stores','m_products','m_partners','m_settings','m_backup','m_log']
+CODES=['111111','888888','222222','333333','777777','444444','555555','666666','444444-1']
+VIEWS=['work','chat','att','att_stats','exp','exp_stats','home','stock','docs','fin','logi','me','report','msgs','logi_svc','recv_pick','take','po_new','so_new','ship_new','pr_new','sr_new','mgmt','m_users','m_stores','m_products','m_partners','m_settings','m_backup','m_log']
 ZH="(()=>{const w=document.createTreeWalker(document.querySelector('.phone'),NodeFilter.SHOW_TEXT);let n,o=[];while(n=w.nextNode()){if(n.parentElement.closest('[data-notr],script,style,#toast'))continue;if(/[\\u4e00-\\u9fff]/.test(n.nodeValue))o.push(n.nodeValue.trim().slice(0,30))}return o})()"
 async def main():
     async with async_playwright() as p:
@@ -27,6 +27,8 @@ async def main():
                 for v in VIEWS:
                     ok=await pg.evaluate(f"!NEED['{v}']||can(NEED['{v}'])")
                     if not ok: continue
+                    e2=await pg.evaluate(f"(()=>{{try{{S.form=null;S.params={{}};V['{v}']&&V['{v}']();return ''}}catch(e){{return e.message}}}})()")
+                    if e2: errs.append(f'VIEW-ERR {code} {v}: {e2}')
                     await pg.evaluate(f"S.form=null;S.hist=[];S.view='{v}';S.params={{}};render(true)");await pg.wait_for_timeout(60)
                     if await pg.evaluate("S.view")!=v: errs.append(f'{code} redirected from {v}')
                     if lang=='en':

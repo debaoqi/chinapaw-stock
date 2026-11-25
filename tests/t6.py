@@ -27,6 +27,23 @@ async def main():
             await K.wait_for_timeout(1000)
             if await K.evaluate(f"!!DB.get('so','{so}')"):break
         print('keeper got order after ~',i+1,'s; banner:',await K.evaluate("document.querySelector('#banner').innerText.replace(/\\n/g,' ')"))
+        # 现款单：仓库不能先出库；财务确认收款后才能出库（经云端）
+        ca=await ctx();Ac=await ca.new_page();Ac.on('pageerror',lambda e:errs.append('A '+str(e)));await login(Ac,'555555')
+        await K.evaluate(f"DB.put('so',{{...DB.get('so','{so}'),status:'shipped'}})");await K.wait_for_timeout(2500);print('keeper forced ship -> server status:',await Ac.evaluate(f"(Sync.run(true),DB.get('so','{so}').status)"))
+        await Ac.wait_for_timeout(1500);await Ac.evaluate(f"soFin('{so}')");await Ac.wait_for_timeout(200);await Ac.fill('#sfR','RC-9');await Ac.evaluate(f"soFinOk('{so}')")
+        for i in range(10):
+            await K.wait_for_timeout(500)
+            if await K.evaluate(f"DB.get('so','{so}').status==='approved'"):break
+        print('keeper sees approved after ~',(i+1)/2,'s')
+        # 私聊经云端：只有成员收到
+        kid=await K.evaluate("S.me.id");await Sa.evaluate(f"openDm('{kid}')");await Sa.wait_for_timeout(300);await Sa.fill('#cIn','明天几点送货？');await Sa.evaluate("chSend()");dm=await Sa.evaluate("S.chId")
+        for i in range(12):
+            await K.wait_for_timeout(500)
+            if await K.evaluate(f"DB.all('msg').some(m=>m.ch==='{dm}')"):break
+        print('keeper got DM after ~',(i+1)/2,'s | unread',await K.evaluate("chatUnread()"))
+        await Ac.wait_for_timeout(2000);print('accountant received DM?',await Ac.evaluate(f"DB.all('msg').some(m=>m.ch==='{dm}')||!!DB.get('chat','{dm}')"))
+        cf=await ctx();Fd=await cf.new_page();await login(Fd,'777777');co=await ctx();Op=await co.new_page();await login(Op,'888888')
+        print('new roles on cloud:',await Fd.evaluate("S.me&&S.me.role"),await Op.evaluate("S.me&&S.me.role"))
         await cs.set_offline(True);await Sa.wait_for_timeout(300)
         await Sa.evaluate("S.form=null;go('so_new',{add:'P8'})");await Sa.wait_for_timeout(200);await Sa.select_option('select.inp >> nth=0','C2');await Sa.click(".bbar button >> nth=-1");await Sa.wait_for_timeout(500)
         so2=await Sa.evaluate("S.params.id");print('offline outbox:',await Sa.evaluate("DB.outbox.length"))
@@ -40,7 +57,7 @@ async def main():
         print('server rejected; toast:',await Sa.evaluate("document.querySelector('#toast').innerText"))
         # cashier & accountant through server
         cc=await ctx();Ca=await cc.new_page();await login(Ca,'666666');print('cashier role:',await Ca.evaluate("S.me.role"))
-        await Ca.wait_for_timeout(1000);await Ca.evaluate(f"arSheet('{so}')");await Ca.wait_for_timeout(300);await Ca.click("text=确认收款");await Ca.wait_for_timeout(3000)
+        await Ca.wait_for_timeout(1000);so=so2;await Ca.evaluate(f"arSheet('{so}')");await Ca.wait_for_timeout(300);await Ca.click("text=确认收款");await Ca.wait_for_timeout(3000)
         print('receipt saved on server:',await Ca.evaluate(f"DB.all('fin').filter(f=>f.ref==='{so}').map(f=>f.status)"),'outbox',await Ca.evaluate("DB.outbox.length"))
         print('\n'.join(errs) or 'NO ERRORS');await b.close()
 asyncio.run(main())
