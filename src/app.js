@@ -104,14 +104,14 @@ const Alerts={
   prefs(){return Object.assign({order:true,low:true,ship:true,logi:true,fin:true},LS.get('prefs_'+(S.me&&S.me.id),{}))},
   add(n,show,t){const a=this.list();if(n.key&&a.some(x=>x.key===n.key))return;n.id=uid('n');n.t=n.t||Date.now();a.unshift(n);this.save(a);if(show)banner(n)},
   scan(rows,show=true){if(!S.me)return;const pf=this.prefs();
-    rows.forEach(({k,d})=>{const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};if(d.by===S.me.id&&!(k==='grn'&&grnCanAct(d))&&!(k==='exp'&&expAct(d))&&!(k==='fin'&&payCanReview(d))&&!(k==='so'&&(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&S.me.role==='gm'||d.status==='approved'&&can('so_ship'))))return;
+    rows.forEach(({k,d})=>{const _add=this.add.bind(this);const self={add:(n,s)=>{n.t=show?Date.now():(d.u||d.t);_add(n,s)}};if(d.by===S.me.id&&!(k==='grn'&&grnCanAct(d))&&!(k==='exp'&&expAct(d))&&!(k==='fin'&&payCanReview(d))&&!(k==='so'&&(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&['chair','gm'].includes(S.me.role)||d.status==='approved'&&can('so_ship'))))return;
       if(k==='att'&&can('att_view')&&d.by!==S.me.id)self.add({key:'at'+d.id,ic:'pin',c:'var(--gold)',zh:`${userName(d.by)} ${ATT_T[d.type][0]} · ${d.addr||''}`,en:`${userName(d.by)} ${ATT_T[d.type][1]} · ${d.addr||''}`,go:['att_stats',{}]},show&&d.type!=='visit');
       if(k==='msg'){if(show&&!d.rc&&(!d.mem||d.mem.includes(S.me.id))&&!(S.view==='chat_room'&&S.chId===d.ch)&&Date.now()-d.t<60e3){const c=chGet(d.ch);const at=(d.at||[]).includes(S.me.id)||(d.at||[]).includes('all');
         const txt=(c&&c.type!=='dm'?chName(c)+' · ':'')+userName(d.by)+'：'+(d.voice?L('[语音]','[Voice]')+(d.text?' '+d.text:''):d.img?L('[图片]','[Photo]'):d.loc?L('[位置]','[Location]'):d.text);banner({ic:'chat',c:at?'var(--red)':'var(--green)',zh:(at?'[有人@你] ':'')+txt,en:(at?'[Mentioned] ':'')+txt,go:['chat_room',{ch:d.ch}]})}return};
       if(k==='exp'&&expAct(d))self.add({key:'ex'+d.id+d.status,ic:'calc',c:'var(--purple)',zh:`费用 ${money(d.amt)} 待您处理`,en:`Expense ${money(d.amt)} needs action`,go:['exp',{}]},show);
       if(k==='grn'&&grnCanAct(d))self.add({key:'gr'+d.id+d.status,ic:'in',c:'var(--purple)',zh:`入库单 ${d.no} 待您处理 · 批号 ${d.batch||d.no}`,en:`Receipt ${d.no} needs your review`,go:['grn_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='submitted'&&own('so_fin'))self.add({key:'so'+d.id+'f'+(d.u||''),ic:'calc',c:'var(--purple)',zh:`销售单 ${d.no} 待财务审核（${d.pay==='credit'?'赊账':'现款'}）· ${pnL(d.cus,'zh')}`,en:`Order ${d.no} needs finance review (${d.pay==='credit'?'credit':'cash'})`,go:['so_view',{id:d.id}]},show);
-      if(k==='so'&&d.status==='credit_gm'&&S.me.role==='gm')self.add({key:'so'+d.id+'g',ic:'calc',c:'var(--red)',zh:`赊账销售单 ${d.no} 待您审批 · ${pnL(d.cus,'zh')}`,en:`Credit order ${d.no} needs your approval`,go:['so_view',{id:d.id}]},show);
+      if(k==='so'&&d.status==='credit_gm'&&['chair','gm'].includes(S.me.role))self.add({key:'so'+d.id+'g',ic:'calc',c:'var(--red)',zh:`赊账销售单 ${d.no} 待您审批 · ${pnL(d.cus,'zh')}`,en:`Credit order ${d.no} needs your approval`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='rejected'&&d.by===S.me.id)self.add({key:'so'+d.id+'r'+(d.u||''),ic:'x',c:'var(--red)',zh:`销售单 ${d.no} 被驳回：${d.rj||''}`,en:`Order ${d.no} rejected: ${d.rj||''}`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='approved'&&can('so_ship')&&pf.order)self.add({key:'so'+d.id+'s',ic:'cart',c:'var(--gold)',zh:`销售单 ${d.no} 已审核，待出库 · ${pnL(d.cus,'zh')}`,en:`Order ${d.no} approved — ready to ship · ${pnL(d.cus,'en')}`,go:['so_view',{id:d.id}]},show);
       if(k==='so'&&d.status==='approved'&&d.by===S.me.id&&pf.order)self.add({key:'so'+d.id+'ok',ic:'check',c:'var(--green)',zh:`销售单 ${d.no} 已审核通过，仓库将出库`,en:`Order ${d.no} approved — the warehouse will ship`,go:['so_view',{id:d.id}]},show);
@@ -135,7 +135,7 @@ const Alerts={
     DB.all('products').forEach(p=>{const q=qtyOf(p.id);const s=stStatus(p,q);if(s==='low'||s==='out')this.add({key:'low'+p.id+day,ic:'alert',c:'var(--red)',zh:`库存不足：${prL(p,'zh')} 仅剩 ${n2(q)} ${unL(p,'zh')}`,en:`Low stock: ${prL(p,'en')} — ${n2(q)} ${unL(p,'en')} left`,go:['product',{id:p.id}]},show)})},
   first(){if(LS.get('notesInit_'+S.me.id,0))return;const rows=[];KINDS.forEach(k=>DB.all(k).forEach(d=>rows.push({k,d})));this.scan(rows.filter(r=>r.k!=='ships'||r.d.status==='exception'||r.d.status==='delivering'),false);LS.set('notesInit_'+S.me.id,1)}
 };
-function banner(n){const b=$('#banner');if(!b)return;b.innerHTML=`<div class="qi" style="background:${n.c||'var(--gold)'};color:#fff">${ic(n.ic||'bell',18)}</div><div style="flex:1;min-width:0"><div class="b sm">${L('新消息','New')}</div><div class="sm one">${esc(L(n.zh,n.en))}</div></div>`;
+function banner(n){noticeSound();const b=$('#banner');if(!b)return;b.innerHTML=`<div class="qi" style="background:${n.c||'var(--gold)'};color:#fff">${ic(n.ic||'bell',18)}</div><div style="flex:1;min-width:0"><div class="b sm">${L('新消息','New')}</div><div class="sm one">${esc(L(n.zh,n.en))}</div></div>`;
   b.onclick=()=>{b.classList.remove('on');markRead(n.id);if(n.go)go(n.go[0],n.go[1])};b.classList.add('on');try{navigator.vibrate&&navigator.vibrate(40)}catch(e){}
   clearTimeout(b._t);b._t=setTimeout(()=>b.classList.remove('on'),4500)}
 function markRead(id){const a=Alerts.list();a.forEach(n=>{if(!id||n.id===id)n.read=true});Alerts.save(a)}
@@ -168,7 +168,7 @@ V.login=()=>{if(S.lgRole===undefined){S.lgRole=LS.get('lgRole',null);S.lgPos=LS.
   </div>`};
 async function doLogin(){const pw=$('#lgPw').value;const e=$('#lgErr');const ppl=lgPeople();if(ppl.length>1&&!ppl.some(u=>u.id===S.lgUid)){e.textContent=L('请选择人员','Choose your name');return}if(!S.lgDept){e.textContent=L('请先选择部门','Choose your department first');return}if(!S.lgRole){e.textContent=L('请选择职位','Choose your position');return}if(!pw){e.textContent=L('请输入密码','Enter your password');return}
   e.textContent='';try{await login(pw,LS.get('trust',true),S.lgRole,ppl.length>1?S.lgUid:(ppl[0]||{}).id||null);afterLogin()}catch(x){e.textContent=x.message;$('#lgPw').select()}}
-function afterLogin(){setTimeout(()=>{permAsk(false);bindPushRegistration()},1500);
+function afterLogin(){purgeRestrictedCache();setTimeout(()=>{permAsk(false);bindPushRegistration()},1500);
   S.hist=[];S.view=/mgmt/.test(location.hash)&&can('mgmt')?'mgmt':'home';Alerts.first();Alerts.low(false);render(true);Sync.run('boot');toast(L('欢迎，','Welcome, ')+nmP(S.me.name)+' · '+userTitle(S.me),false)}
 function doLogout(){openSheet(`<div class="sh">${L('退出登录？','Sign out?')}</div><div class="sm muted" style="margin-top:6px">${DB.outbox.length?L(`还有 ${DB.outbox.length} 条记录未提交，下次登录后继续提交。`,`${DB.outbox.length} change(s) not yet submitted; they will be sent next time you sign in.`):L('退出后需要重新输入密码登录。','You will need your password to sign in again.')}</div>
   <div class="row gap" style="margin-top:18px"><button class="bigbtn ghost" onclick="closeSheet()">${L('取消','Cancel')}</button><button class="bigbtn red" onclick="closeSheet();logout();S.view='login';render(true)">${L('退出','Sign out')}</button></div>`)}
@@ -281,7 +281,7 @@ function chMsgs(id){return DB.all('msg').filter(m=>m.ch===id).sort((a,b)=>a.t-b.
 const chRead=()=>LS.get('rd_'+meId(),{});
 function chUnreadOf(id){const r=chRead()[id]||0;return DB.all('msg').filter(m=>m.ch===id&&m.by!==meId()&&m.t>r&&!m.rc).length}
 function chatUnread(){if(!S.me)return 0;return chList().reduce((a,c)=>a+chUnreadOf(c.id),0)}
-function chMarkRead(id){const r=chRead();const last=chMsgs(id).slice(-1)[0];r[id]=Math.max(r[id]||0,last?last.t:Date.now());LS.set('rd_'+meId(),r);updateUnreadBadge()}
+function chMarkRead(id){const r=chRead();const last=chMsgs(id).slice(-1)[0];r[id]=Math.max(r[id]||0,last?last.t:Date.now());LS.set('rd_'+meId(),r);if(document.visibilityState==='visible'&&S.view==='chat_room'){const rid='rd_'+meId()+'_'+id,old=DB.get('read',rid);if(last&&(!old||old.lastT<last.t))DB.put('read',{id:rid,ch:id,userId:meId(),lastT:last.t,readAt:Date.now()},{quiet:true})}updateUnreadBadge()}
 function chMemNames(c){return c.mem?c.mem.map(u=>userName(u)).join('、'):L('全体同事','Everyone')}
 const avatar=(uid,sz=36)=>{const u=DB.get('users',uid)||{};const n=nmP(u.name)||'?';return `<div class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px;flex:none;background:${ROLE_COLOR[u.role]||'#888'};color:#fff">${esc(n.slice(0,1))}</div>`};
 /* 翻译：按阅读者的语言显示译文（缓存，不重复请求） */
@@ -350,7 +350,7 @@ function chatMsgsHTML(c){const ms=chMsgs(c.id).slice(-300);let last=0;
       (m.text?`<div style="white-space:pre-wrap;word-break:break-word">${esc(m.text).replace(/@(\S+)/g,'<b>@$1</b>')}</div>`:'')+
       trs.map(([l,t])=>`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.45)':'var(--line)'};font-size:14px;opacity:.92;white-space:pre-wrap;word-break:break-word"><span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;margin-right:5px;background:${mine?'rgba(255,255,255,.22)':'var(--soft)'}" data-notr>${l==='zh'?'中':l==='en'?'EN':esc(l.toUpperCase())}</span>${esc(t)} <button class="pill" style="padding:2px 8px" onclick="event.stopPropagation();msgSpeak('${m.id}','${l}')">${ic('play',12)} ${L('朗读','Listen')}</button></div>`).join('')+(m.text&&!m.tr&&m.by===meId()&&Date.now()-m.t<8000?`<div class="xs" style="opacity:.7;margin-top:4px">${L('翻译中…','Translating…')}</div>`:'');
     return h+`<div class="row" style="gap:8px;margin:8px 0;align-items:flex-start;${mine?'flex-direction:row-reverse':''}">${avatar(m.by,34)}<div style="max-width:76%;min-width:0">${mine||c.type==='dm'?'':`<div class="xs muted" style="margin:0 0 2px 4px">${esc(userName(m.by))}</div>`}
-      <div onclick="msgMenu('${m.id}')" style="cursor:pointer;padding:9px 12px;border-radius:16px;${mine?'background:var(--green);color:#fff;border-top-right-radius:4px':'background:#fff;border-top-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)'}">${body}</div></div></div>`}).join('')||`<div class="sm muted" style="text-align:center;margin-top:40px">${L('说点什么吧','Say hello')}</div>`}
+      <div onclick="msgMenu('${m.id}')" style="cursor:pointer;padding:9px 12px;border-radius:16px;${mine?'background:var(--green);color:#fff;border-top-right-radius:4px':'background:#fff;border-top-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)'}">${body}</div>${readReceiptHTML(m,c)}</div></div>`}).join('')||`<div class="sm muted" style="text-align:center;margin-top:40px">${L('说点什么吧','Say hello')}</div>`}
 function chatPaint(){if(S.view!=='chat_room')return;const box=$('#msgs'),sc=$('#screen');if(!box)return;const c=chGet(S.chId);if(!c)return;
   const atBottom=sc.scrollHeight-sc.scrollTop-sc.clientHeight<120;box.innerHTML=chatMsgsHTML(c);chMarkRead(c.id);updateUnreadBadge();if(atBottom)sc.scrollTop=sc.scrollHeight}
 function chBtns(){const has=!!(($('#cIn')||{}).value||'').trim();const p=$('#cPlus'),s=$('#cSend');if(p)p.style.display=has?'none':'flex';if(s)s.style.display=has?'flex':'none'}
@@ -387,6 +387,7 @@ function locHelp(err,manual){const e=typeof err==='string'?locErr('fail'):err||l
 function msgMenu(id){const m=DB.get('msg',id);if(!m||m.rc)return;const mine=m.by===meId();const canRc=mine&&Date.now()-m.t<120e3;
   openSheet(`<div class="box" style="padding:4px 16px;margin-top:6px">
    <div class="li" onclick="S.cReply=DB.get('msg','${id}');closeSheet(true);render(false);setTimeout(()=>$('#cIn')&&$('#cIn').focus(),50)">${ic('reply',18)} <span class="sm b">${L('回复','Reply')}</span></div>
+   ${m.voice?`<div class="box"><div class="xs muted">${L('系统播放器（兼容苹果网页）','System player (iPhone web compatible)')}</div><audio controls playsinline preload="metadata" src="${esc(m.voice)}" style="width:100%"></audio></div>`:''}
    ${m.text?`<div class="li" onclick="msgRetranslate('${id}')">${ic('translate',18)} ${L('重新翻译','Retry translation')}</div><div class="li" onclick="msgSpeak('${id}','original')">${ic('play',18)} ${L('朗读原文','Read original')}</div>${msgLangs(m).filter(l=>trOf(m,l)&&trOf(m,l)!==m.text).map(l=>`<div class="li" onclick="msgSpeak('${id}','${l}')">${ic('play',18)} ${L('朗读译文','Read translation')} · ${esc(l.toUpperCase())}</div>`).join('')}`:''}
    ${m.text?`<div class="li" onclick="copyText(DB.get('msg','${id}').text);closeSheet(true)">${ic('copy',18)} <span class="sm b">${L('复制','Copy')}</span></div>`:''}
    ${m.loc?`<div class="li" onclick="const l=DB.get('msg','${id}').loc;copyText(l.url||(l.lat!=null?gmap(l.lat,l.lng):gmapQ(l.addr||'')));closeSheet(true)">${ic('link',18)} <span class="sm b">${L('复制谷歌地图链接','Copy Google Maps link')}</span></div>`:''}
@@ -417,21 +418,21 @@ async function vStart(ev){ev.preventDefault();try{ev.target.setPointerCapture(ev
   const R={starting:true,t0:Date.now(),y0:ev.clientY||0,cancel:false,text:'',ch:S.chId};VREC=R;
   try{await nativePerms(['microphone']);const caps=await voiceCaps();R.native=!!caps.record;
     if(R.released){VREC=null;return}
-    if(R.native)await NX().startVoice();
+    if(R.native){R.live=!!caps.live;await NX().startVoice({lang:srLang(),transcribe:R.live})}
     else{const mime=vMime();if(!mime||!navigator.mediaDevices?.getUserMedia)throw new Error(L('此版本不支持录音，请更新 APP','Recording unavailable; update the app'));
       R.st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});R.mime=mime;R.chunks=[];
       R.mr=new MediaRecorder(R.st,{mimeType:mime,audioBitsPerSecond:64000});R.mr.ondataavailable=e=>{if(e.data?.size)R.chunks.push(e.data)};R.mr.start(250)}
     R.t0=Date.now();R.starting=false;
     if(R.released){await vStop(true);return}
     // Android WebView has no Web Speech API. Native recognition uses the separate voice-translation action.
-    const SR=!isNative()&&(window.SpeechRecognition||window.webkitSpeechRecognition);
-    if(SR){try{const sr=new SR();sr.lang=srLang();sr.continuous=true;sr.interimResults=true;let fin='';sr.onresult=e=>{let it='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;else it+=e.results[i][0].transcript}R.text=(fin+it).trim()};R.srDone=new Promise(r=>sr.onend=r);sr.onerror=()=>{};sr.start();R.sr=sr}catch(e){}}
+    const SR=!R.native&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+    if(SR){try{const sr=new SR();sr.lang=srLang();sr.continuous=true;sr.interimResults=true;let fin='';sr.onresult=e=>{let it='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;else it+=e.results[i][0].transcript}R.text=(fin+it).trim();voiceLiveTranslation(R)};R.srDone=new Promise(r=>{R.srResolve=r});sr.onend=()=>{if(VREC===R&&!R.released){setTimeout(()=>{try{if(VREC===R)sr.start()}catch(e){}},100)}else R.srResolve&&R.srResolve()};sr.onerror=e=>{R.speechError=e.error;const h=$('#vH');if(h&&/not-allowed|service-not-allowed|language-not-supported/.test(e.error))h.textContent=L('语音识别不可用，可继续发送原声或使用语音输入重试','Speech recognition unavailable; send audio or retry dictation')};sr.start();R.sr=sr}catch(e){}}
     const ov=document.createElement('div');ov.id='vOv';ov.style.cssText='position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:90;background:rgba(0,0,0,.78);color:#fff;border-radius:22px;padding:20px;text-align:center';ov.innerHTML=`🎙️<div id="vT">0″</div><div id="vH">${L('松开发送，上滑取消','Release to send · slide up to cancel')}</div>`;document.body.appendChild(ov);
-    R.tm=setInterval(()=>{const t=$('#vT');if(t)t.textContent=Math.floor((Date.now()-R.t0)/1000)+'″';if(Date.now()-R.t0>=60000)vStop(false)},250);
+    R.tm=setInterval(()=>{const t=$('#vT');if(t)t.textContent=Math.floor((Date.now()-R.t0)/1000)+'″';if(R.live&&NX().voiceTranscript&&!R.polling){R.polling=true;NX().voiceTranscript().then(x=>{R.text=x.text||R.text;voiceLiveTranslation(R);const h=$('#vH');if(h&&!R.cancel&&R.text)h.textContent=R.text+(R.liveTranslation?'\n'+R.liveTranslation:'')}).catch(()=>{}).finally(()=>R.polling=false)}if(Date.now()-R.t0>=60000)vStop(false)},250);
   }catch(e){if(R.st)R.st.getTracks().forEach(t=>t.stop());if(R.native)try{await NX().stopVoice({cancel:true})}catch(_){}VREC=null;toast(String(e.message||e));if(/permission|denied|权限/i.test(String(e)))micHelp()}}
 function vMove(ev){if(!VREC)return;const up=(VREC.y0-(ev.clientY||0))>70;VREC.cancel=up;const o=$('#vOv'),h=$('#vH');if(o)o.style.background=up?'rgba(200,40,40,.85)':'rgba(0,0,0,.78)';if(h)h.textContent=up?L('松开取消','Release to cancel'):L('松开发送，上滑取消','Release to send · slide up to cancel')}
 async function vStop(cancel){const R=VREC;if(!R)return;if(R.starting){R.released=true;R.cancel=true;return}VREC=null;clearInterval(R.tm);$('#vOv')?.remove();cancel=cancel||R.cancel;const dur=(Date.now()-R.t0)/1000;
-  try{let blob;if(R.native){const result=await NX().stopVoice({cancel:!!cancel||dur<1});if(cancel||dur<1)return;blob=await (await fetch(result.data)).blob()}
+  try{let blob;if(R.native){const result=await NX().stopVoice({cancel:!!cancel||dur<1});if(cancel||dur<1)return;blob=await (await fetch(result.data)).blob();R.text=result.text||R.text}
     else{await new Promise((resolve,reject)=>{R.mr.onstop=resolve;R.mr.onerror=reject;R.mr.stop()});R.st.getTracks().forEach(t=>t.stop());if(R.sr)R.sr.stop();if(cancel||dur<1)return;if(R.srDone)await Promise.race([R.srDone,new Promise(r=>setTimeout(r,1500))]);blob=new Blob(R.chunks,{type:R.mr.mimeType||R.mime})}
     if(!blob.size)throw new Error(L('录音为空，请重试','Empty recording; try again'));const id=uid('ms');toast(L('正在发送语音…','Sending voice…'),false);const url=await upVoice(blob),text=(R.text||'').trim();chPost({id,voice:url,dur:Math.min(60,Math.round(dur)),text,vt:!!text},R.ch);
     if(text)msgTr(text).then(({src,tr})=>{const m=DB.get('msg',id);if(m&&!m.rc){DB.put('msg',{...m,src,tr});chatPaint()}})
@@ -451,8 +452,8 @@ async function upVoice(blob){blob=await portableVoice(blob);const toData=()=>new
     for(let a=0;a<3;a++){if(a)await new Promise(z=>setTimeout(z,[0,800,2000][a]));try{const r=await fetch(BASE+'/storage/v1/object/jxc-voice/'+name,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':type==='audio/mp4'?'audio/mp4':type,'x-upsert':'false'},body:blob});
       const t=r.ok?'':await r.text().catch(()=>'');if(r.ok||/Duplicate|already exists/i.test(t))return BASE+'/storage/v1/object/public/jxc-voice/'+name;if(r.status<500&&r.status!==429)break}catch(e){}}}catch(e){}
   return toData()}
-async function vPlay(id){const m=DB.get('msg',id);if(!m?.voice)return;if(VAUD&&VPLAY===id){VAUD.pause();VAUD=null;VPLAY=null;chatPaint();return}if(VAUD)VAUD.pause();const a=new Audio(m.voice);VAUD=a;VPLAY=id;
-  const reset=()=>{if(VAUD===a){VAUD=null;VPLAY=null;chatPaint()}};a.onended=reset;a.onerror=()=>{if(VAUD===a)toast(L('语音无法解码或下载，请检查网络；旧录音可让发送人用新版重发','Cannot decode/download audio; check network or resend old recordings with the updated app'));reset()};chatPaint();try{await a.play()}catch(e){if(VAUD!==a)return;toast(L('播放失败：','Playback failed: ')+String(e.message||e));reset()}}
+async function vPlay(id){const m=DB.get('msg',id);if(!m?.voice)return;if(VAUD&&VPLAY===id){VAUD.pause();VAUD=null;VPLAY=null;chatPaint();return}if(VAUD)VAUD.pause();const a=new Audio();a.preload='auto';a.setAttribute('playsinline','');a.src=m.voice;VAUD=a;VPLAY=id;
+  const reset=()=>{if(VAUD===a){VAUD=null;VPLAY=null;chatPaint()}};a.onended=reset;a.onerror=()=>{if(VAUD===a)toast(L('语音无法解码或下载，请检查网络；旧录音可让发送人用新版重发','Cannot decode/download audio; check network or resend old recordings with the updated app'));reset()};try{if(navigator.audioSession)navigator.audioSession.type='playback';noticeCtx?.resume()}catch(e){}const playing=a.play();chatPaint();try{await playing}catch(e){if(VAUD!==a)return;toast(L('播放失败：','Playback failed: ')+String(e.message||e));reset()}}
 function vMode(on){S.cVoice=on;const t=$('#cTxtRow'),v=$('#cVoiceBtn'),mb=$('#cMic');if(t)t.style.display=on?'none':'flex';if(v)v.style.display=on?'flex':'none';if(mb)mb.innerHTML=ic(on?'keyboard':'mic',20);if(!on){const i=$('#cIn');i&&i.focus()}}
 
 /* ===== 外勤打卡：定位 + 带水印的现场照片（姓名、时间、地址、经纬度）。总经理、销售经理、运营经理可查看，出勤统计报给销售经理 ===== */
@@ -489,12 +490,17 @@ function attSheet(){const a=S.att;openSheet(`<div class="sh">${L(ATT_T[a.type][0
   ${a.type==='visit'?`<div class="fld"><label>${L('拜访客户','Customer visited')}</label>${partnerSel('cus',a.cus,"S.att.cus=this.value")}</div>`:''}
   <div class="fld"><label>${L('备注（可选）','Note (optional)')}</label><input class="inp" style="background:var(--card)" value="${esc(a.note)}" oninput="S.att.note=this.value"></div>
   <button class="bigbtn" style="width:100%;margin-top:14px" onclick="attSave()">${ic('check',18)} ${L('确认打卡','Check in')}</button>`)}
-function attPhoto(){if(!own('att'))return;camShot(async f=>{toast(L('正在处理照片…','Processing photo…'),false);const a=S.att;
-    const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)} · ${L(ATT_T[a.type][0],ATT_T[a.type][1])}`,new Date().toLocaleString(S.lang==='zh'?'zh-CN':'en-GB'),a.addr||'',`${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} ±${a.acc}m${a.approx?' · '+L('网络大致位置','approx.'):''}`].filter(Boolean);
-    const [big,small]=await Promise.all([wmImg(f,1280,lines),wmImg(f,240,[])]);const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;attSheet()},()=>attSheet())}
+function attPhoto(){if(!own('att')||!S.att)return;const a=S.att;
+  camShot(async f=>{S.photoBusy=true;try{toast(L('正在处理照片…','Processing photo…'),false);
+    const lines=[`${nmP(S.me.name)} · ${userTitle(S.me)}`,new Date().toLocaleString(),a.addr||'',`${Number(a.lat||0).toFixed(5)}, ${Number(a.lng||0).toFixed(5)}`];
+    const [big,small]=await Promise.all([wmImg(f,960,lines),wmImg(f,200,[])]);
+    a.photo=big;a.thumb=small;S.att=a;LS.set('attDraft_'+meId(),a);attSheet();
+    const [u,t]=await Promise.all([upImg(big),upImg(small)]);a.photo=u;a.thumb=t;LS.set('attDraft_'+meId(),a);
+    if(S.att===a&&sheetOn())attSheet();
+  }catch(e){S.att=a;attSheet();toast(L('照片处理失败，请重试：','Photo processing failed: ')+String(e.message||e))}finally{S.photoBusy=false}},()=>attSheet())}
 /* 应用内相机：直接打开摄像头拍照（不用选相册）；手机不支持时退回系统相机 */
 function camFallback(cb){const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>{const f=i.files[0];if(f)cb(f)};i.click()}
-async function camShot(cb,back){const caps=await voiceCaps();if(caps.camera&&isNative()){try{await nativePerms(['camera']);const photo=await NX().capturePhoto();if(photo.cancelled){back&&back();return}cb(await (await fetch(photo.data)).blob());return}catch(e){toast(String(e.message||e));back&&back();return}}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return camFallback(cb);
+async function camShot(cb,back){const caps=await voiceCaps();if(caps.camera&&isNative()){try{await nativePerms(['camera']);const photo=await NX().capturePhoto();if(photo.cancelled){back&&back();return}await cb(await (await fetch(photo.data)).blob());return}catch(e){toast(String(e.message||e));back&&back();return}}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return camFallback(cb);
   let st;try{await nativePerms(['camera']);st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false})}catch(e){return camFallback(cb)}
   const ov=document.createElement('div');ov.id='camOv';ov.style.cssText='position:fixed;inset:0;z-index:95;background:#000;display:flex;flex-direction:column';
   ov.innerHTML=`<video id="camV" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;min-height:0"></video>
@@ -509,24 +515,24 @@ async function camShot(cb,back){const caps=await voiceCaps();if(caps.camera&&isN
   $('#camS').onclick=()=>{const w=v.videoWidth,h=v.videoHeight;if(!w)return;const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(v,0,0,w,h);
     cv.toBlob(b=>{stop();if(b)cb(b)},'image/jpeg',.9)}}
 /* 水印：照片底部半透明黑条 + 白字（姓名职位、时间、地址、经纬度） */
-function wmImg(f,max,lines){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
+function wmImg(f,max,lines){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
   const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);if(lines.length){const fs=Math.max(14,Math.round(c.width/34)),lh=fs*1.35;const wrap=[];x.font=`600 ${fs}px sans-serif`;
     lines.forEach(t=>{let cur='';for(const ch of t){if(x.measureText(cur+ch).width>c.width-fs*2){wrap.push(cur);cur=ch}else cur+=ch}wrap.push(cur)});
     const h=wrap.length*lh+fs*1.2;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,c.height-h,c.width,h);x.fillStyle='#fff';x.textBaseline='top';wrap.forEach((t,i)=>x.fillText(t,fs,c.height-h+fs*.6+i*lh));
     x.fillStyle='#F2B705';x.fillRect(0,c.height-h,Math.max(6,fs/3),h)}
-  res(c.toDataURL('image/jpeg',.82))};im.src=r.result};r.readAsDataURL(f)})}
-function attSave(){if(!own('att'))return;const a=S.att;if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
-  DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,approx:!!a.approx,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);toast(L('打卡成功','Checked in'),false);render(false)}
+  res(c.toDataURL('image/jpeg',.82))};im.onerror=()=>rej(new Error('Photo decode failed'));im.src=r.result};r.onerror=()=>rej(new Error('Photo read failed'));r.readAsDataURL(f)})}
+function attSave(){if(!own('att'))return;const a=S.att;if(S.photoBusy)return toast(L('照片处理中，请稍候','Photo processing; please wait'));if(!a.photo)return toast(L('请先拍现场照片','Take the site photo first'));if(a.type==='visit'&&!a.cus&&!a.note)return toast(L('请选择客户或填写备注','Choose a customer or add a note'));
+  DB.put('att',{type:a.type,t:Date.now(),lat:a.lat,lng:a.lng,acc:a.acc,approx:!!a.approx,addr:a.addr,photo:a.photo,thumb:a.thumb,cus:a.cus||'',note:a.note||'',wh:S.me.wh});closeSheet(true);LS.del('attDraft_'+meId());toast(L('打卡已保存，正在同步','Check-in saved; syncing'),false);render(false)}
 /* 考勤统计：按人、按月；出勤天数、首次 / 末次打卡、拜访次数；点人看明细 */
 V.att_stats=()=>{const m=S.attM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
   const rs=DB.all('att').filter(a=>a.t>=from&&a.t<to);const staff=DB.all('users').filter(u=>u.active!==false&&own('att',u)&&(S.me.role!=='sales'||['sales','field'].includes(u.role))).sort((x,y)=>Object.keys(ROLES).indexOf(x.role)-Object.keys(ROLES).indexOf(y.role));
-  const ws=+((DB.get('settings','app')||{}).workStart||9);
-  const row=u=>{const l=rs.filter(a=>a.by===u.id);const days=[...new Set(l.filter(a=>a.type==='in').map(a=>dayKey(a.t)))];const late=days.filter(d=>{const f=l.filter(a=>a.type==='in'&&dayKey(a.t)===d).sort((a,b)=>a.t-b.t)[0];const h=new Date(f.t);return h.getHours()+h.getMinutes()/60>ws+0.25}).length;
+  const ws=+((DB.get('settings','app')||{}).workStart??8.5);
+  const row=u=>{const l=rs.filter(a=>a.by===u.id);const days=[...new Set(l.filter(a=>a.type==='in').map(a=>dayKey(a.t)))];const late=days.filter(d=>{const f=l.filter(a=>a.type==='in'&&dayKey(a.t)===d).sort((a,b)=>a.t-b.t)[0];const h=new Date(f.t);return h.getHours()+h.getMinutes()/60>ws}).length;
     return {u,days:days.length,late,visit:l.filter(a=>a.type==='visit').length,out:new Set(l.filter(a=>a.type==='out').map(a=>dayKey(a.t))).size,last:l.sort((a,b)=>b.t-a.t)[0]}};
   const data=staff.map(row);const sel=S.attU;
   return hdr(L('考勤统计','Attendance'),`<button class="icbtn" onclick="exportAtt('${m}')">${ic('download')}</button>`)+`<div class="pad">
    <div class="row gap" style="margin-top:6px"><button class="icbtn" onclick="S.attM=attShift('${m}',-1);render(false)">${ic('back')}</button><b style="flex:1;text-align:center" data-notr>${m}</b><button class="icbtn" style="transform:scaleX(-1)" onclick="S.attM=attShift('${m}',1);render(false)">${ic('back')}</button></div>
-   <div class="xs muted" style="margin-top:6px">${L(`上班时间 ${ws}:00，晚于 ${ws}:15 打卡算迟到`,`Work starts ${ws}:00; after ${ws}:15 counts as late`)}</div>
+   <div class="xs muted" style="margin-top:6px">${L(`上班时间 ${workTime(ws)}，下班时间 17:00；晚于上班时间为迟到`,`Work ${workTime(ws)}–17:00; clock-ins after start are late`)}</div>
    <div class="box" style="padding:4px 16px">${data.map(d=>`<div class="li" onclick="S.attU=S.attU==='${d.u.id}'?null:'${d.u.id}';render(false)">${avatar(d.u.id,38)}<div style="flex:1;min-width:0"><div class="b sm one">${esc(nmP(d.u.name))} <span class="xs muted">${esc(userTitle(d.u))}</span></div>
      <div class="xs muted">${L('出勤','Days')} <b>${d.days}</b> · ${L('迟到','Late')} <b class="${d.late?'red':''}">${d.late}</b> · ${L('拜访','Visits')} <b>${d.visit}</b> · ${L('下班打卡','Clock-outs')} <b>${d.out}</b></div>${d.last?`<div class="xs muted one">${L('最近：','Latest: ')}${fdate(d.last.t)} · ${esc(d.last.addr||'')}</div>`:''}</div>${ic('chev',14)}</div>`).join('')||`<div class="sm muted" style="padding:12px 0">${L('还没有需要打卡的人员','No staff to show')}</div>`}</div>
    ${sel?`<div class="sec-h">${esc(userName(sel))} · ${L('打卡明细','Records')}</div>${attList(rs.filter(a=>a.by===sel).sort((a,b)=>b.t-a.t),false)}`:`<div class="sec-h">${L('本月全部打卡','All check-ins this month')}</div>${attList(rs.sort((a,b)=>b.t-a.t).slice(0,80),true)}`}</div>`};
@@ -544,8 +550,8 @@ const expLimit=()=>2000;
 const expName=k=>L((EXP_C[k]||EXP_C.other)[0],(EXP_C[k]||EXP_C.other)[1]);
 /* 当前用户在这笔费用上能做什么 */
 function expAct(e){const r=S.me.role;
-  if(e.status==='submitted'&&r==='ops')return 'approve';
-  if(e.status==='gm_pending'&&r==='gm'&&e.op)return 'gm';
+  if(e.status==='submitted'&&['chair','ops'].includes(r))return 'approve';
+  if(e.status==='gm_pending'&&['chair','gm'].includes(r)&&e.op)return 'gm';
   if(e.status==='approved'&&e.op&&(+e.amt<=expLimit()||e.gm)&&own('exp_book'))return 'book';
   if(e.status==='booked'&&e.op&&(+e.amt<=expLimit()||e.gm)&&own('fin_pay'))return 'pay';return ''}
 function expTodo(){if(!S.me)return 0;return DB.all('exp').filter(e=>expAct(e)).length+DB.all('exp').filter(e=>e.by===S.me.id&&e.status==='rejected'&&!e.seen).length}
@@ -587,7 +593,7 @@ function expDo(id,ok){const e=DB.get('exp',id);const act=expAct(e);if(!act)retur
   else if(act==='approve')DB.put('exp',{...e,status:e.amt>expLimit()?'gm_pending':'approved',op:o});
   else if(act==='gm')DB.put('exp',{...e,status:'approved',gm:o});
   else if(act==='book')DB.put('exp',{...e,status:'booked',bk:o,bt:Date.now()});
-  else{const m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash';if(n.length<2)return toast(L('请填写','Enter the ')+refLabel(m));DB.put('exp',{...e,status:'paid',pd:{...o,ref:n,method:m}})}
+  else{const m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash';if(n.length<2)return toast(L('请填写','Enter the ')+refLabel(m));DB.put('exp',{...e,status:'paid',accountId:S.moneyAccount,pd:{...o,ref:n,method:m}})}
   closeSheet(true);toast(L('已处理','Done'),false);render(false)}
 /* 费用统计：按月、按类别、按人员，方便核算运营成本 */
 V.exp_stats=()=>{const m=S.exM||dayKey(Date.now()).slice(0,7);const [y,mo]=m.split('-').map(Number);const from=new Date(y,mo-1,1).getTime(),to=new Date(y,mo,1).getTime();
@@ -706,7 +712,7 @@ V.stock=()=>{const sm=stockMap();const q=S.stQ.trim().toLowerCase();const W=S.st
    <div class="chips">${[['all',L('全部门店','All stores')]].concat(activeWh().map(w=>[w.id,nm(w.n)])).map(([k,t])=>`<span class="chip ${S.stW===k?'on':''}" onclick="S.stW='${k}';render(false)">${esc(t)}</span>`).join('')}</div>
    <div class="chips" style="margin-top:8px">${[['all',L('全部分类','All categories')],...cats.map(c=>[c.k,nm(c.n)]),...(unc?[['_',L('未分类','Uncategorised')]]:[])].map(([k,t])=>`<span class="chip ${S.stC===k?'on':''}" onclick="S.stC='${esc(k)}';render(false)">${esc(t)}</span>`).join('')}<span class="chip" style="border:1.5px dashed var(--muted);background:transparent" onclick="catSheet()">${ic('edit',13)} ${L('分类','Categories')}</span></div>
    <div class="seg">${[['all',L('全部','All'),cnt.all],['ok',L('正常','Normal'),cnt.ok],['low',L('不足','Low'),cnt.low],['over',L('积压','Overstock'),cnt.over]].map(([k,t,n])=>`<button class="${S.stF===k?'on':''}" onclick="S.stF='${k}';render(false)">${t} ${n}</button>`).join('')}</div>
-   <div class="row between sm muted" style="margin:10px 2px"><span>${list.length} ${L('种商品','items')}</span><span>${can('cost')?L('库存成本','Stock cost'):L('库存货值','Stock value')} <b style="color:var(--ink)" data-notr>${money(val)}</b></span></div>
+   <div class="row between sm muted" style="margin:10px 2px"><span>${list.length} ${L('种商品','items')}</span><span>${can('cost')?L('库存成本','Stock cost'):L('库存货值','Stock value')} <b style="color:var(--ink)" data-notr>${can('cost')&&DB.all('moves').some(m=>m.uc==null||m.costFixed===false)?L('待核对','Pending reconciliation'):money(val)}</b></span></div>
    ${list.map(({p,qty,s})=>`<div class="wc" onclick="go('product',{id:'${p.id}'})"><div class="top"><div class="row between" style="align-items:flex-start;gap:8px">
      <div class="row gap" style="min-width:0;align-items:flex-start">${thumb(p,42)}<div style="min-width:0"><h3><span class="tt">${esc(nm(p.n))}</span></h3><small data-notr>${esc(p.code)} · ${esc(p.bar)}</small></div></div>${stBadge(s)}</div>
      <div class="cols"><div><span class="l">${L('库存','Qty')}</span><span class="v ${s==='low'||s==='out'?'red':''}">${n2(qty)} ${esc(unit(p))}</span></div>
@@ -848,7 +854,7 @@ function feeFromCalc(){fcInit();const f=S.fc,r=frRate(f.mode);const x=frCost(f.m
 const landK=d=>{const it=itemsTotal(d);const fe=(d.fees||[]).reduce((a,f)=>a+(+f.amt||0),0);return it>0?(it+fe)/it:1};
 let _acV=-1,_acM={};
 function avgCost(pid){if(_acV!==DB.ver){_acV=DB.ver;_acM={}}if(pid in _acM)return _acM[pid];const p=P_(pid);let q=0,v=0;
-  DB.all('moves').forEach(m=>{if(m.pid!==pid||m.qty<=0)return;if(m.type==='po_in'){const c=m.uc!=null?+m.uc:(+p.cost||0);q+=m.qty;v+=m.qty*c}else if(m.type==='init'){q+=m.qty;v+=m.qty*(+p.cost||0)}});
+  DB.all('moves').filter(m=>m.pid===pid).sort((a,b)=>(a.postedAt||a.t)-(b.postedAt||b.t)).forEach(m=>{const uc=m.uc!=null?+m.uc:(q>0?v/q:+p.cost||0);q+=+m.qty;v+=+m.qty*uc;if(Math.abs(q)<1e-8){q=0;v=0}});
   return _acM[pid]=q>0?v/q:(+p.cost||0)}
 function savePO(st){const F=S.form;if(!F.sup)return toast(L('请选择供应商','Choose a supplier'));const items=F.items.filter(i=>+i.qty>0);if(!items.length)return toast(L('请添加商品','Add at least one item'));
   const d=DB.put('po',{...F,kind:undefined,_v:undefined,fees:(F.fees||[]).filter(f=>+f.amt>0).map(f=>({k:f.k,n:f.n||'',amt:+f.amt})),items:items.map(i=>({...i,qty:+i.qty,price:+i.price,recv:+i.recv||0})),status:st,no:F.no||genNo('PO'),t:F.t||Date.now()});S.form=null;
@@ -981,7 +987,7 @@ function saveSO(st){const F=S.form;if(!F.cus)return toast(L('请选择客户','C
 V.so_view=()=>{const d=DB.get('so',S.params.id);if(!d)return hdr('')+emptyBox('doc',L('单据不存在','Not found'));const shs=DB.all('ships').filter(s=>s.ref===d.id);const rets=DB.all('sr').filter(r=>r.so===d.id);const acts=[];
   if(d.status==='rejected'&&can('so'))acts.push(`<button class="bigbtn" onclick="S.form=null;go('so_new',{id:'${d.id}'})">${L('修改后重新提交','Edit & resubmit')}</button>`);
   if(d.status==='submitted'&&own('so_fin'))acts.push(`<button class="bigbtn" onclick="soFin('${d.id}')">${ic('calc',18)} ${d.pay==='credit'?L('赊账审核','Review credit'):L('确认收款','Confirm payment')}</button>`);
-  if(d.status==='credit_gm'&&S.me.role==='gm')acts.push(`<button class="bigbtn" onclick="soGm('${d.id}')">${ic('check',18)} ${L('审批赊账','Approve credit')}</button>`);
+  if(d.status==='credit_gm'&&['chair','gm'].includes(S.me.role))acts.push(`<button class="bigbtn" onclick="soGm('${d.id}')">${ic('check',18)} ${L('审批赊账','Approve credit')}</button>`);
   if(d.status==='draft'&&can('so'))acts.push(`<button class="bigbtn ghost" onclick="S.form=null;go('so_new',{id:'${d.id}'})">${L('编辑','Edit')}</button>`,`<button class="bigbtn" onclick="setSt('so','${d.id}','submitted')">${L('提交','Submit')}</button>`);
   if(d.status==='approved'&&can('so_ship'))acts.push(`<button class="bigbtn" onclick="shipSheet('${d.id}')">${ic('out',18)} ${L('确认发货','Confirm shipment')}</button>`);
   if(['submitted','credit_gm'].includes(d.status)&&can('so')&&d.by===S.me.id)acts.push(`<button class="bigbtn ghost" onclick="setSt('so','${d.id}','draft')">${L('撤回修改','Withdraw')}</button>`);
@@ -1025,30 +1031,25 @@ function soFinOk(id){const d=DB.get('so',id);if(!own('so_fin')||!d)return;if(d.s
   const amt=+$('#sfA').value,ref=$('#sfR').value.trim(),m=($('#sheet .chip.on')||{dataset:{}}).dataset.m||'cash',bal=x0.bal;
   if(!(amt>0))return toast(L('请填写实收金额','Enter the amount received'));if(amt+0.005<bal)return toast(L('现款订单须全额收款；未收全请驳回，让业务员改为赊账','Cash orders must be paid in full — reject so sales can switch to credit'));
   if(ref.length<2)return toast(L('请填写','Enter the ')+refLabel(m));
-  DB.put('fin',{type:'rcv',ref:id,refKind:'so',amount:+amt.toFixed(2),method:m,note:ref,pref:ref,status:'verified',t:Date.now()});
+  DB.put('fin',{type:'rcv',ref:id,refKind:'so',accountId:S.moneyAccount,amount:+amt.toFixed(2),method:m,note:ref,pref:ref,status:'verified',t:Date.now()});
   DB.put('so',{...d,status:'approved',fin:{by:S.me.id,t:Date.now(),note:L('已收 ','received ')+money(amt)}});closeSheet(true);toast(L('已确认收款，仓库可以出库了','Payment confirmed — the warehouse can ship'),false);render(false)}
-function soGm(id){const d=DB.get('so',id);if(S.me.role!=='gm'||d.status!=='credit_gm')return;
+function soGm(id){const d=DB.get('so',id);if(!['chair','gm'].includes(S.me.role)||d.status!=='credit_gm')return;
   openSheet(`<div class="sh">${L('审批赊账','Approve credit')}</div>${soHead(d)}${d.fin?`<div class="note-g" style="margin-top:10px">${L('财务意见：','Finance: ')}${esc(userName(d.fin.by))} · ${esc(d.fin.note||L('同意','approved'))}</div>`:''}
    <div class="fld"><label>${L('审批意见','Comment')}</label><input class="inp" id="sgN" style="background:var(--card)"></div>
    <div class="row gap" style="margin-top:14px"><button class="bigbtn dark" style="flex:1" onclick="soReject('${id}')">${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="soGmOk('${id}')">${ic('check',18)} ${L('批准赊账','Approve')}</button></div>`)}
-function soGmOk(id){const d=DB.get('so',id);if(!S.me||S.me.role!=='gm'||!d)return;if(d.status!=='credit_gm')return;DB.put('so',{...d,status:'approved',gmok:{by:S.me.id,t:Date.now(),note:($('#sgN').value||'').trim()}});closeSheet(true);toast(L('已批准，仓库可以出库了','Approved — the warehouse can ship'),false);render(false)}
-function soReject(id){const d=DB.get('so',id);if(!d||!(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&S.me.role==='gm'))return;openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="srR" style="margin-top:10px;background:var(--card)" placeholder="${L('如：客户欠款过多，请先收款','e.g. too much owed — collect first')}">
+function soGmOk(id){const d=DB.get('so',id);if(!S.me||!['chair','gm'].includes(S.me.role)||!d)return;if(d.status!=='credit_gm')return;DB.put('so',{...d,status:'approved',gmok:{by:S.me.id,t:Date.now(),note:($('#sgN').value||'').trim()}});closeSheet(true);toast(L('已批准，仓库可以出库了','Approved — the warehouse can ship'),false);render(false)}
+function soReject(id){const d=DB.get('so',id);if(!d||!(d.status==='submitted'&&own('so_fin')||d.status==='credit_gm'&&['chair','gm'].includes(S.me.role)))return;openSheet(`<div class="sh">${L('驳回原因','Reason')}</div><input class="inp" id="srR" style="margin-top:10px;background:var(--card)" placeholder="${L('如：客户欠款过多，请先收款','e.g. too much owed — collect first')}">
   <button class="bigbtn" style="width:100%;margin-top:14px;background:var(--red);color:#fff" onclick="const r=$('#srR').value.trim();if(r.length<2)return toast(L('请填写驳回原因','Give a reason'));DB.put('so',{...DB.get('so','${id}'),status:'rejected',rj:r,rjBy:S.me.id});closeSheet(true);toast(L('已驳回，业务员会收到通知','Rejected — sales has been notified'));render(false)">${L('确认驳回','Reject')}</button>`)}
 /* 销售出库：确认发货 → 按先到期先出扣减库存，可同时登记物流 */
-function shipSheet(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved')return;const chk=d.items.map(it=>({it,av:qtyOf(it.pid,d.wh)}));const short=chk.filter(x=>x.av<x.it.qty);
-  openSheet(`<div class="sh">${L('确认发货','Confirm shipment')}</div><div class="sm muted" data-notr>${esc(d.no)} · ${esc(ptName(d.cus))}</div>
-   <div style="margin-top:10px">${chk.map(x=>`<div class="li" style="cursor:default"><div style="flex:1;min-width:0"><div class="b sm one">${esc(pName(x.it.pid))}</div><div class="xs ${x.av<x.it.qty?'red b':'muted'}">${L('库存','Stock')} ${n2(x.av)}</div></div><b data-notr>-${n2(x.it.qty)}</b></div>`).join('')}</div>
-   ${short.length?`<div class="note-r" style="margin-top:10px">${L('库存不足，无法发货。请先调拨或修改数量。','Not enough stock to ship. Transfer stock or change quantities.')}</div>`:`
-   <div class="row between" style="margin-top:14px"><span class="b sm">${L('同时登记物流','Add logistics info')}</span>${sw(true,"this.classList.toggle('on');$('#shF').style.display=this.classList.contains('on')?'':'none'")}</div>
-   <div id="shF"><div class="row gap" style="margin-top:10px"><select class="inp" id="shC">${CARRIERS.map(c=>`<option value="${c.id}">${esc(nm(c))}</option>`).join('')}</select><input class="inp" id="shT" placeholder="${L('运单号 / 车牌','Tracking no. / plate')}"></div>
-   <input class="inp" id="shD" style="margin-top:8px" placeholder="${L('司机 / 联系电话（可选）','Driver / phone (optional)')}"></div>
-   <button class="bigbtn" style="width:100%;margin-top:16px" onclick="doShip('${id}')">${ic('check',18)} ${L('确认出库，扣减库存','Ship & deduct stock')}</button>`}`)}
-function doShip(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved')return;const plan=[];for(const it of d.items){const a=allocate(it.pid,d.wh,+it.qty);if(!a)return toast(L('库存不足：','Not enough stock: ')+pName(it.pid));plan.push([it,a])}
-  plan.forEach(([it,a])=>a.forEach(b=>addMove({pid:it.pid,wh:d.wh,qty:-b.qty,type:'so_out',ref:d.id,batch:b.batch||'',exp:b.exp||''})));
-  DB.put('so',{...d,status:'shipped',st:Date.now(),items:d.items.map(i=>({...i,shipped:i.qty}))});
-  const on=$('#shF')&&$('#shF').style.display!=='none';if(on){const c=$('#shC').value;DB.put('ships',{no:genNo('SH'),dir:'out',ref:d.id,refKind:'so',carrier:c,mode:carrier(c).mode,trackNo:$('#shT').value.trim(),driver:$('#shD').value.trim(),
-    from:whName(d.wh),to:nm(d.addr)||ptName(d.cus),eta:fday(Date.now()+864e5),cost:0,status:'picked',t:Date.now(),ev:[{t:Date.now(),st:'picked',place:whName(d.wh),note:''}]})}
-  Alerts.low(false);closeSheet(true);toast(L('已出库，库存已扣减','Shipped — stock deducted'));render(false)}
+function shipSheet(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved')return;S.shipQty={};
+  openSheet(`<div class="sh">${L('分批出库','Partial shipment')}</div><div class="sm">${esc(d.no)} · ${esc(ptName(d.cus))}</div>${d.items.map((it,n)=>{const shipped=DB.all('moves').filter(m=>m.ref===d.id&&m.pid===it.pid&&m.type==='so_out').reduce((a,m)=>a-m.qty,0),left=Math.max(0,it.qty-shipped),q=Math.min(left,qtyOf(it.pid,d.wh));S.shipQty[n]=q;return `<div class="box"><b>${esc(pName(it.pid))}</b><div>${L('已发 / 待发 / 库存','Shipped / remaining / stock')}: ${shipped} / ${left} / ${qtyOf(it.pid,d.wh)}</div><label>${L('本次出库数量','Quantity this shipment')}</label><input class="inp" type="number" min="0" max="${q}" value="${q}" oninput="S.shipQty[${n}]=+this.value"></div>`}).join('')}<div class="note-g">${L('未全部发出时保留待出库；每批实际出库确认收入并固定成本。','Unshipped quantities remain open. Each actual shipment fixes revenue and cost.')}</div><button class="bigbtn" onclick="doShip('${id}')">${L('确认本次出库','Confirm this shipment')}</button>`)}
+async function doShip(id){const d=DB.get('so',id);if(!can('so_ship')||!d||d.status!=='approved'||S.shipping)return;const plan=[];const shipment=uid('dispatch');
+  for(let n=0;n<d.items.length;n++){const it=d.items[n],q=+(S.shipQty?.[n]||0),sent=DB.all('moves').filter(m=>m.ref===id&&m.pid===it.pid&&m.type==='so_out').reduce((a,m)=>a-m.qty,0);if(q<0||!Number.isFinite(q)||q>it.qty-sent+1e-8)return toast(L('出库数量超出未发数量','Shipment exceeds remaining quantity'));if(q===0)continue;const a=allocate(it.pid,d.wh,q);if(!a)return toast(L('库存不足：','Not enough stock: ')+pName(it.pid));plan.push([it,a])}
+  if(!plan.length)return toast(L('请填写本次出库数量','Enter a shipment quantity'));S.shipping=true;
+  try{plan.forEach(([it,a])=>a.forEach((b,n)=>addMove({id:shipment+'_'+it.pid+'_'+n,pid:it.pid,wh:d.wh,qty:-b.qty,uc:avgCost(it.pid),revenue:+it.price*b.qty,type:'so_out',ref:id,batch:b.batch||'',exp:b.exp||'',shipment})));
+    const items=d.items.map(i=>({...i,shipped:DB.all('moves').filter(m=>m.ref===id&&m.pid===i.pid&&m.type==='so_out').reduce((a,m)=>a-m.qty,0)})),complete=items.every(i=>i.shipped>=i.qty-1e-8);
+    DB.put('so',{...d,status:complete?'shipped':'approved',st:Date.now(),items});await commitBusiness([id,...plan.flatMap(([it,a])=>a.map((b,n)=>shipment+'_'+it.pid+'_'+n))]);closeSheet(true);toast(complete?L('全部出库已同步','Shipment completed and synced'):L('本批出库已同步，余量仍待出库','Partial shipment synced; balance remains open'),false);Alerts.low(false);render(false)
+  }catch(e){toast(L('出库未确认，请核对同步状态：','Shipment not confirmed; check sync: ')+String(e.message||e))}finally{S.shipping=false}}
 
 /* ---------- 简易盘点：录入实盘数 → 生成差异记录（不立即改账，待审核） ---------- */
 V.take=()=>{if(!S.form||S.form.kind!=='take')S.form={kind:'take',wh:myWh(),items:[],note:''};const F=S.form;
@@ -1094,7 +1095,7 @@ const pmName=k=>L((PM[k]||PM.cash)[0],(PM[k]||PM.cash)[1]);
 const FN_ST={recorded:['待核对','To verify','b-gold'],verified:['已核对','Verified','b-green'],gm_pending:['待总经理审批','Awaiting GM','b-gold'],req:['待运营经理审批','Awaiting operations','b-gold'],rejected:['审批驳回','Rejected','b-red'],approved:['已批准待付','Approved, to pay','b-blue'],paid:['已付款','Paid','b-green'],void:['已作废','Void','b-grey']};
 const soNet=s=>docTotal(s)-(s.items||[]).reduce((a,i)=>a+(+i.ret||0)*(+i.price||0),0);
 const poNet=p=>{const grs=DB.all('grn').filter(g=>g.po===p.id).map(g=>g.id);const ret=DB.all('pr').filter(r=>grs.includes(r.grn)&&(r.status||'done')==='done').reduce((a,r)=>a+r.items.reduce((b,i)=>{const it=p.items.find(x=>x.pid===i.pid)||{};return b+i.qty*(+it.price||0)},0),0);return docTotal(p)-ret};
-function arOf(s){const fs=DB.all('fin').filter(f=>f.type==='rcv'&&f.ref===s.id&&f.status!=='void');const got=fs.reduce((a,f)=>a+(+f.amount||0),0);const tot=soNet(s);return {tot,got,bal:Math.max(0,tot-got),fs}}
+function arOf(s){const fs=DB.all('fin').filter(f=>f.type==='rcv'&&f.ref===s.id&&f.status!=='void');const got=fs.length?fs.reduce((a,f)=>a+(+f.amount||0),0):(+s.paidVerified||0);const tot=soNet(s);return {tot,got,bal:Math.max(0,tot-got),fs}}
 function apOf(p){const fs=DB.all('fin').filter(f=>f.type==='pay'&&f.ref===p.id&&f.status!=='void');const paid=fs.filter(f=>f.status==='paid').reduce((a,f)=>a+(+f.amount||0),0);
   const sum=st=>fs.filter(f=>f.status===st).reduce((a,f)=>a+(+f.amount||0),0);const appr=sum('approved'),req=sum('req')+sum('gm_pending'),tot=poNet(p);
   return {tot,paid,appr,req,bal:Math.max(0,tot-paid),free:Math.max(0,tot-paid-appr-req),fs}}
@@ -1140,7 +1141,7 @@ function arSheet(id){const s=DB.get('so',id);const x=arOf(s);
      <button class="bigbtn" style="width:100%;margin-top:14px" onclick="finRecv('${id}')">${ic('check',18)} ${L('确认收款','Confirm receipt')}</button>`:''}
    ${!can('fin_receive')&&x.bal>0.005&&can('fin')?`<div class="note-y" style="margin-top:12px">${L('收款由出纳登记，会计负责核对。','The cashier records receipts; the accountant verifies them.')}</div>`:''}`)}
 function finRecv(id){const s=DB.get('so',id);const x=arOf(s);const amt=+$('#rcA').value;if(!(amt>0))return toast(L('请输入收款金额','Enter an amount'));if(amt>x.bal+0.005)return toast(L('超过未收余额','More than the balance'));
-  const m=($('#sheet .chip.on')||{}).dataset.m||'cash';DB.put('fin',{type:'rcv',ref:id,refKind:'so',amount:amt,method:m,note:$('#rcN').value.trim(),status:'recorded',t:Date.now()});
+  const m=($('#sheet .chip.on')||{}).dataset.m||'cash';DB.put('fin',{type:'rcv',ref:id,refKind:'so',accountId:S.moneyAccount,amount:amt,method:m,note:$('#rcN').value.trim(),status:'recorded',t:Date.now()});
   toast(L('已登记收款，等待会计核对','Receipt recorded — waiting for the accountant'),false);arSheet(id);softRender(true)}
 function finVerify(fid,so){if(!own('fin_verify'))return;const f=DB.get('fin',fid);if(!f||f.status!=='recorded')return;DB.put('fin',{...f,status:'verified',vby:S.me.id,vt:Date.now()});const d=DB.get('so',so);if(d&&d.status==='submitted'&&d.pay!=='credit'&&arOf(d).bal<=0.005&&arOf(d).fs.every(x=>x.status==='verified'))DB.put('so',{...d,status:'approved',fin:{by:S.me.id,t:Date.now(),note:L('全额收款已核对，放行出库','Full payment verified; released')}});toast(L('已核对','Verified'),false);arSheet(so);softRender(true)}
 /* ===== 付款审批流程：会计提交付款申请 → 总经理审批（批准 / 驳回）→ 出纳按批准金额付款 ===== */
@@ -1186,7 +1187,7 @@ function payReqSave(po,fid){const x=apOf(DB.get('po',po)),f=fid?DB.get('fin',fid
   const d={...(f||{type:'pay',ref:po,refKind:'po'}),amount:+amt.toFixed(2),purp:S.pq.purp,method:S.pq.method,due:due?+new Date(due):0,note,status:'req',at:Date.now(),t:f?f.t:Date.now()};
   delete d.oby;delete d.ot;delete d.onote;delete d.gby;delete d.gt;delete d.gnote;DB.put('fin',d);closeSheet(true);toast(L('已提交，等待总经理审批','Sent — waiting for the GM'),false);apSheet(po);softRender(true)}
 /* 总经理：逐笔审批，可批准或驳回（驳回需写原因） */
-const payCanReview=f=>f.type==='pay'&&(S.me.role==='ops'&&f.status==='req'||S.me.role==='gm'&&f.status==='gm_pending'&&!!f.oby);
+const payCanReview=f=>f.type==='pay'&&(['chair','ops'].includes(S.me.role)&&f.status==='req'||['chair','gm'].includes(S.me.role)&&f.status==='gm_pending'&&!!f.oby);
 const payReady=f=>f.status==='approved'&&!!f.oby&&(+f.amount<=2000||!!f.gby);
 function payGm(fid){const f=DB.get('fin',fid);if(!f||!payCanReview(f))return;const p=DB.get('po',f.ref),x=apOf(p);
   const after=Math.max(0,x.bal-f.amount);const sup=DB.all('po').filter(o=>o.sup===p.sup).map(o=>apOf(o)).reduce((a,y)=>a+y.bal,0);
@@ -1201,7 +1202,7 @@ function payGm(fid){const f=DB.get('fin',fid);if(!f||!payCanReview(f))return;con
    <div class="row gap" style="margin-top:12px"><button class="bigbtn dark" style="flex:1" onclick="payGmDo('${fid}',false)">${ic('x',18)} ${L('驳回','Reject')}</button><button class="bigbtn" style="flex:1" onclick="payGmDo('${fid}',true)">${ic('check',18)} ${L('批准付款','Approve')}</button></div>`)}
 function payGmDo(fid,ok){const f=DB.get('fin',fid),n=$('#pgN').value.trim();if(!f||!payCanReview(f))return toast(L('这笔申请已处理','Already handled'));
   if(!ok&&n.length<2)return $('#pgE').textContent=L('驳回请写明原因','Give a reason for rejecting');
-  const ops=S.me.role==='ops';DB.put('fin',{...f,status:ok?(ops&&f.amount>2000?'gm_pending':'approved'):'rejected',...(ops?{oby:S.me.id,ot:Date.now(),onote:n}:{gby:S.me.id,gt:Date.now(),gnote:n})});closeSheet(true);
+  const ops=['chair','ops'].includes(S.me.role);DB.put('fin',{...f,status:ok?(ops&&f.amount>2000?'gm_pending':'approved'):'rejected',...(ops?{oby:S.me.id,ot:Date.now(),onote:n}:{gby:S.me.id,gt:Date.now(),gnote:n})});closeSheet(true);
   toast(ok?(ops&&f.amount>2000?L('运营经理已通过，等待总经理审批','Operations approved — awaiting GM'):L('已批准，出纳会收到付款通知','Approved — the cashier has been notified')):L('已驳回，会计会收到通知','Rejected — the accountant has been notified'),false);apSheet(f.ref);softRender(true)}
 function payUnapprove(fid){const f=DB.get('fin',fid);if(!['gm','ops'].includes(S.me.role)||f.status!=='approved')return;DB.put('fin',{...f,status:'req',oby:null,ot:null,onote:'',gby:null,gt:null,gnote:''});toast(L('已撤销批准，回到待审批','Approval undone'),false);apSheet(f.ref);softRender(true)}
 /* 总经理：所有待审批的付款申请 */
@@ -1218,7 +1219,7 @@ function finPaySheet(fid){const f=DB.get('fin',fid);const p=DB.get('po',f.ref);i
    <input class="inp" id="pyN" style="margin-top:10px;background:var(--card)" placeholder="${refLabel(f.method||'bank')}${L('（必填）',' (required)')}">
    <button class="bigbtn" style="width:100%;margin-top:14px" onclick="finPay('${fid}')">${ic('check',18)} ${L('确认已付款','Confirm paid')}</button>`)}
 function finPay(fid){const f=DB.get('fin',fid);if(!own('fin_pay')||!payReady(f))return toast(L('需要运营经理审批；超过 2000 还需总经理审批','Operations approval required; over 2000 also needs GM approval'));const ref=$('#pyN').value.trim();if(ref.length<2)return toast(L('请填写','Enter the ')+refLabel(($('#sheet .chip.on')||{dataset:{}}).dataset.m));
-  const m=($('#sheet .chip.on')||{}).dataset.m||'bank';DB.put('fin',{...f,status:'paid',method:m,pby:S.me.id,pt:Date.now(),pref:ref});
+  const m=($('#sheet .chip.on')||{}).dataset.m||'bank';DB.put('fin',{...f,status:'paid',accountId:S.moneyAccount,method:m,pby:S.me.id,pt:Date.now(),pref:ref});
   toast(L('已付款','Paid'),false);apSheet(f.ref);softRender(true)}
 function exportFin(){const fin=DB.all('fin').filter(f=>f.status!=='void'&&(f.type==='rcv'||f.status==='paid')).sort((a,b)=>(a.pt||a.t)-(b.pt||b.t));let bal=0;
   exportXlsx(L('资金日记账','CashBook'),[{name:L('资金日记账','Cash book'),title:L('资金日记账','Cash book'),money:[5,6,7],
@@ -1355,12 +1356,12 @@ function bookAdmin(id){const b=DB.get('svc',id);openSheet(`<div class="sh">${L('
 S.rpR='today';S.rpK='val';
 V.report=()=>{const from=S.rpR==='today'?dayStart():S.rpR==='week'?dayStart()-((new Date().getDay()+6)%7)*864e5:+new Date(new Date().getFullYear(),new Date().getMonth(),1);
   const r=S.me.role;const seeSales=['gm','ops','sales','acct'].includes(r),seeStock=can('stock'),seeProfit=can('profit'),seeBuy=['gm','ops','buyer','acct'].includes(r);
-  const so=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=from);const sales=so.reduce((a,s)=>a+docTotal(s),0);
+  const so=DB.all('so').filter(s=>['shipped','done'].includes(s.status)&&(s.st||0)>=from);const sales=DB.all('moves').filter(m=>m.t>=from&&['so_out','so_ret'].includes(m.type)).reduce((a,m)=>a+(m.type==='so_out'?1:-1)*(+m.revenue||0),0);
   const mv=DB.all('moves').filter(m=>m.t>=from);const outN=new Set(mv.filter(m=>m.type==='so_out'||m.type==='po_ret').map(m=>m.ref)).size,inN=new Set(mv.filter(m=>m.type==='po_in'||m.type==='so_ret').map(m=>m.ref)).size;
-  const cogs=mv.filter(m=>m.type==='so_out').reduce((a,m)=>a+(-m.qty)*avgCost(m.pid),0)-mv.filter(m=>m.type==='so_ret').reduce((a,m)=>a+m.qty*avgCost(m.pid),0);
+  const cogs=mv.filter(m=>m.type==='so_out').reduce((a,m)=>a+(m.costAmount??(-m.qty)*(+m.uc||0)),0)-mv.filter(m=>m.type==='so_ret').reduce((a,m)=>a+(m.costAmount??m.qty*(+m.uc||0)),0);
   const freight=so.filter(s=>s.frt&&s.frt.payer==='us').reduce((a,s)=>a+(+s.frt.amt||0),0);const opex=DB.all('exp').filter(e=>['booked','paid'].includes(e.status)&&(e.bt||e.t)>=from).reduce((a,e)=>a+(+e.amt||0),0);
   const buys=DB.all('po').filter(p=>p.status!=='draft'&&p.status!=='cancel'&&p.t>=from).reduce((a,p)=>a+docTotal(p),0);
-  const days=[...Array(7)].map((_,i)=>{const d0=dayStart()-(6-i)*864e5;const v=DB.all('so').filter(s=>s.status!=='draft'&&s.status!=='cancel'&&s.t>=d0&&s.t<d0+864e5).reduce((a,s)=>a+docTotal(s),0);return {d0,v}});
+  const days=[...Array(7)].map((_,i)=>{const d0=dayStart()-(6-i)*864e5;const v=DB.all('so').filter(s=>['shipped','done'].includes(s.status)&&(s.st||0)>=d0&&(s.st||0)<d0+864e5).reduce((a,s)=>a+docTotal(s),0);return {d0,v}});
   const mx=Math.max(1,...days.map(d=>d.v));
   const rank=DB.all('products').map(p=>{const q=qtyOf(p.id);return {p,q,v:q*(can('cost')?avgCost(p.id):p.price)}}).sort((a,b)=>S.rpK==='val'?b.v-a.v:b.q-a.q).slice(0,20);const rmx=Math.max(1,...rank.map(x=>S.rpK==='val'?x.v:x.q));
   const last=DB.all('moves').sort((a,b)=>b.t-a.t).slice(0,10);
@@ -1438,7 +1439,7 @@ V.me=()=>{const me=S.me;const pf=Alerts.prefs();const row=meRow;const P=plan();
     ${row('refresh',L('检查更新','Check for updates'),`<span data-notr>v${APP_VER} · build ${APP_BUILD}</span>`,'checkUpdate(true)',hasUpd()?'<span style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span>':null)}</div>
    <button class="bigbtn ghost" style="width:100%;margin-top:18px;color:var(--red)" onclick="doLogout()">${ic('logout',18)} ${L('退出登录','Sign out')}</button>
    <div class="xs muted" style="text-align:center;margin-top:14px" data-notr>v${APP_VER} · build ${APP_BUILD}</div></div>`};
-function langSheet(){const ls=langsOf(S.country);openSheet(`<div class="sh">${L('语言','Language')}</div><div class="xs muted">${L('英语、中文和所在国家的官方语言','English, Chinese and the official languages of your country')}</div><div style="margin-top:8px">${ls.map(l=>`<div class="li" onclick="closeSheet();setLang('${l}')"><b data-notr style="flex:1">${esc(LN[l]||l)}</b>${S.lang===l?ic('check'):''}</div>`).join('')}</div>`)}
+function langSheet(){const ls=langsOf(S.country);openSheet(`<div class="sh">${L('语言','Language')}</div><div class="xs muted">${L('英语、中文和所在国家的官方语言','English, Chinese and the official languages of your country')}</div><div style="margin-top:8px">${ls.map(l=>`<div class="li" onclick="closeSheet();setLang('${l}')"><b data-notr style="flex:1">${langFlag(l)} ${esc(LN[l]||l)}</b>${S.lang===l?ic('check'):''}</div>`).join('')}</div>`)}
 function profileSheet(){openSheet(`<div class="sh">${L('个人资料','Profile')}</div><div class="fld"><label>${L('姓名','Name')}</label><input class="inp" id="pfN" value="${esc(nmP(S.me.name))}"></div><div class="fld"><label>${L('账号代码','Account code')}</label><input class="inp" value="${esc(S.me.code||'')}" disabled data-notr></div>
   <div class="xs muted" style="margin-top:8px">${L('部门和账号代码由总经理在后台管理','Department and account code are managed by the general manager')}</div><button class="bigbtn" style="width:100%;margin-top:16px" onclick="saveProfile({name:$('#pfN').value.trim()})">${L('保存','Save')}</button>`)}
 function saveProfile(ch){if(ch.name==='')return toast(L('请填写姓名','Enter your name'));Object.assign(S.me,ch);const s=LS.get(SK,{});s.me=S.me;LS.set(SK,s);
@@ -1605,7 +1606,7 @@ async function prodSave(){const p=S.ep;if(!p.n.zh.trim()&&!p.n.en.trim())return 
   await fillEn(p.n);p.unit.en=p.unit.en||p.unit.zh;if(catKey(p.cat))await fillEn(p.cat);
   const known=catList().find(c=>c.k===catKey(p.cat));if(known)p.cat={...known.n};
   const isNew=!p.id;const d=DB.put('products',p);
-  if(isNew)Object.entries(S.epOpen||{}).forEach(([wh,q])=>{if(q>0)addMove({pid:d.id,wh,qty:q,type:'init',ref:'',batch:'',exp:''})});
+  if(isNew)Object.entries(S.epOpen||{}).forEach(([wh,q])=>{if(q>0)DB.put('stockreq',{type:'opening',status:'pending',wh,items:[{pid:d.id,qty:q,uc:+d.cost||0}],t:Date.now()})});
   closeSheet();toast(L('已保存','Saved'),false);render(false)}
 function prodDel(id){const p=DB.get('products',id);const q=qtyOf(id);
   confirmSheet(L('删除商品？','Delete this product?'),`<b>${esc(nm(p.n))}</b><br>${q?L(`当前库存 ${n2(q)}，删除后不再出现在库存和开单里；以前的单据和流水仍保留。`,`${n2(q)} on hand. It will no longer appear in stock or new documents; past documents are kept.`):L('删除后不再出现在库存和开单里；以前的单据仍保留。','It will no longer appear in stock or new documents; past documents are kept.')}`,L('删除','Delete'),()=>{
@@ -1661,7 +1662,7 @@ V.m_settings=()=>{const s=DB.get('settings','app')||{id:'app',co:{zh:'',en:''}};
     <div class="xs muted" style="margin-top:8px;line-height:1.6">${L('运费 = 计费量 × 单价。计费量取实际重量与体积重量中较大的：按立方米计时 1 立方米 = 1000 公斤；按公斤计时体积重量 = 体积 × 换算系数（海运 1000、空运 167、陆运 333、快递 200）。','Freight = chargeable quantity × unit price. The larger of actual weight and volume weight is charged: per m³, 1 m³ = 1000 kg; per kg, volume weight = volume × factor (sea 1000, air 167, road 333, express 200).')}</div>
     <div class="box" style="margin:12px 0 0;background:var(--soft);padding:12px"><b class="sm">${L('试算','Try it')}</b><div class="row gap" style="margin-top:8px"><div style="flex:1"><div class="xs muted">${L('重量（公斤）','Weight (kg)')}</div><input class="inp" id="frKg" type="number" inputmode="decimal" value="${S.frKg||500}" style="background:var(--card)" oninput="S.frKg=this.value;frTry()"></div><div style="flex:1"><div class="xs muted">${L('体积（立方米）','Volume (m³)')}</div><input class="inp" id="frCbm" type="number" inputmode="decimal" value="${S.frCbm||2}" style="background:var(--card)" oninput="S.frCbm=this.value;frTry()"></div></div><div id="frOut" style="margin-top:8px">${Object.keys(MODES).map(k=>frLine(k,S.frKg||500,S.frCbm||2)).join('')}</div></div></div></div>`};
 
-async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co,expLimit:2000,workStart:Math.min(23,Math.max(0,+$('#stWS').value||9))});toast(L('已保存','Saved'),false);render(false)}
+async function coSave(){const co=await fillEn({zh:$('#stCz').value,en:$('#stCe').value});DB.put('settings',{...(DB.get('settings','app')||{id:'app'}),base:$('#stB').value,co,expLimit:2000,workStart:8.5,workEnd:17});toast(L('已保存','Saved'),false);render(false)}
 function resetSheet(){openSheet(`<div class="sh red">${L('清空业务数据','Clear business data')}</div><div class="sm" style="margin-top:8px;line-height:1.7">${L('所有商品、分类、客户、供应商、单据、库存、财务和物流记录都会被删除，不能恢复。其他部门的手机也会同步清空。请输入 <b>清空</b> 两个字确认。','All items, categories, customers, suppliers, documents, stock, finance and logistics records are deleted and cannot be restored. Other phones are cleared too. Type <b>CLEAR</b> to confirm.')}</div>
   <input class="inp" id="rsT" style="background:var(--card);margin-top:12px" autocomplete="off"><div class="sm red" id="rsE" style="margin-top:8px"></div>
   <button class="bigbtn" style="width:100%;margin-top:12px;background:var(--red);color:#fff" onclick="doReset()">${L('确认清空','Clear now')}</button>`)}

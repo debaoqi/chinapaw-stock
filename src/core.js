@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.8.0',APP_BUILD=16;
+const APP_VER='1.9.0',APP_BUILD=17;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -111,7 +111,7 @@ ROLES.ops.p.push('att');
 const ROLE_ORDER=['chair','gm','ops','buyer','sales','field','keeper','acct','cashier','clerk'];
 function can(p,u){u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';if(p==='mgmt')return !!u&&(['chair','gm'].includes(u.role)||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_recv')return can('po_prepare',u)||can('po_recv',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
 /* 职位本身的权限（不含总经理的“全部权限”）：财务复核、出纳付款等环节只属于对应职位，互相制约 */
-const own=(p,u)=>{u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';const r=u&&ROLES[u.role];return !!r&&r.p!=='*'&&r.p.includes(p)};
+const own=(p,u)=>{u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';const r=u&&ROLES[u.role];return !!r&&(u.role==='chair'||r.p!=='*'&&r.p.includes(p))};
 const roleName=r=>nm(ROLES[r]||{zh:r,en:r});
 /* 由账号代码识别部门：111111 / 111111-3 → 总经理 …… */
 /* 部门：每个部门有基本职位，也可以新增职位（新职位的权限参照本部门的一个基本职位） */
@@ -134,7 +134,7 @@ const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   p(){return this.cloud?'c_':''},
@@ -145,7 +145,7 @@ const DB={
   all(k){return (this.d[k]||[]).filter(x=>!x.del)},
   get(k,id){return (this.d[k]||[]).find(x=>x.id===id)},
   /* 写入一条记录：本机立即生效，进入待提交队列；联网后自动提交到云端 */
-  put(k,doc,opt={}){doc={...doc};if(!doc.id)doc.id=uid(k.slice(0,2));doc.u=Date.now();doc.by=doc.by||(S.me&&S.me.id)||'';
+  put(k,doc,opt={}){doc={...doc};delete doc.paidVerified;if(!doc.id)doc.id=uid(k.slice(0,2));doc.u=Date.now();doc.by=doc.by||(S.me&&S.me.id)||'';
     const a=this.d[k]||(this.d[k]=[]);const i=a.findIndex(x=>x.id===doc.id);if(i>=0)a[i]=doc;else a.push(doc);
     if(!opt.local){this.outbox.push({k,id:doc.id,d:doc});doc._q=1}
     this.ver++;this.save();if(!opt.quiet){bc('chg',[{k,d:doc}]);setTimeout(()=>Sync.run(),50)}return doc},
@@ -170,7 +170,7 @@ async function cloudProbe(){if(!DB.cloud)return;const k='cloudOK';let ok=LS.get(
 async function rpc(fn,args){const r=await fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
    headers:{apikey:CFG.supabaseAnonKey,Authorization:'Bearer '+CFG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(args||{})});
   const tx=await r.text();if(!r.ok){let m=tx;try{m=JSON.parse(tx).message||tx}catch(e){}throw new Error(m)}return tx?JSON.parse(tx):null}
-function acceptCloudUsers(users){const changed=JSON.stringify(DB.d.users)!==JSON.stringify(users);DB.d.users=users;if(changed)DB.ver++;if(S.me){const me=users.find(u=>u.id===S.me.id);if(me){S.me={...me};const sess=LS.get(SK,null);if(sess){sess.me=S.me;LS.set(SK,sess)}}}}
+function acceptCloudUsers(users){if(window.purgeRestrictedCache)purgeRestrictedCache();const changed=JSON.stringify(DB.d.users)!==JSON.stringify(users);DB.d.users=users;if(changed)DB.ver++;if(S.me){const me=users.find(u=>u.id===S.me.id);if(me){S.me={...me};const sess=LS.get(SK,null);if(sess){sess.me=S.me;LS.set(SK,sess)}}}}
 const Sync={timer:null,
   async run(force){
     if(S.syncing){S.syncAgain=true;return}if(!navigator.onLine){S.online=false;window.syncUI&&syncUI();return}
@@ -229,7 +229,7 @@ const stBadge=s=>`<span class="badge ${ST_NAME[s][2]}">${L(ST_NAME[s][0],ST_NAME
 function allocate(pid,wh,qty){const bs=batchesOf(pid,wh).filter(b=>b.q>0);const r=[];let left=qty;
   for(const b of bs){if(left<=0)break;const take=Math.min(b.q,left);r.push({batch:b.batch,exp:b.exp,qty:take});left-=take}
   if(left>1e-9)return null;return r}
-function addMove(o){return DB.put('moves',{t:Date.now(),...o})}
+function addMove(o){return DB.put('moves',{t:Date.now(),...o,uc:o.uc!=null?o.uc:typeof avgCost==='function'?avgCost(o.pid):0})}
 const MV={init:['期初','Opening','b-grey'],po_in:['采购入库','Purchase in','b-green'],po_ret:['采购退货','Purchase return','b-orange'],
   so_out:['销售出库','Sales out','b-blue'],so_ret:['销售退货','Sales return','b-purple'],adj:['盘点调整','Count adjust','b-gold']};
 const mvName=t=>L((MV[t]||[t,t])[0],(MV[t]||[t,t])[1]);

@@ -95,7 +95,7 @@ async function ensureLang(l){if(['zh','en'].includes(l))return true;const d=trDi
   const miss=[...new Set(all)].filter(k=>k&&/[A-Za-z]/.test(k)&&d[k]==null);if(!miss.length)return true;if(!navigator.onLine)return false;
   const v=await gtx(miss,l);miss.forEach((k,i)=>{if(v[i])d[k]=v[i]});LS.set('tr_'+l,d);return true}
 function langBtn(){const ls=langsOf(S.country);const i=ls.indexOf(S.lang);const nx=ls[(i+1)%ls.length];const lab=nx==='zh'?'中':nx.toUpperCase();
-  return `<button class="langbtn" data-notr onclick="setLang('${nx}')" title="${esc(LN[nx]||nx)}">${lab}</button>`}
+  return `<button class="langbtn" data-notr onclick="setLang('${nx}')" title="${esc(LN[nx]||nx)}">${langFlag(nx)} ${lab}</button>`}
 function ctryBtn(){return `<button class="langbtn" data-notr onclick="countrySheet()" title="${esc(C().en)}" style="font-size:18px">${flagE(S.country)}</button>`}
 async function setLang(l,quiet){const prev=S.lang;LS.set('lang',l);
   if(!['zh','en'].includes(l)&&!quiet){const d=trDict(l);if(Object.keys(d).length<50){toast((LN[l]||l)+' …',false);await ensureLang(l)}else ensureLang(l)}
