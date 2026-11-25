@@ -230,8 +230,18 @@ function chMemNames(c){return c.mem?c.mem.map(u=>userName(u)).join('、'):L('全
 const avatar=(uid,sz=36)=>{const u=DB.get('users',uid)||{};const n=nmP(u.name)||'?';return `<div class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px;flex:none;background:${ROLE_COLOR[u.role]||'#888'};color:#fff">${esc(n.slice(0,1))}</div>`};
 /* 翻译：按阅读者的语言显示译文（缓存，不重复请求） */
 const CTRC=new Map(Object.entries(LS.get('ctr',{})));let _trSave=0;
-function chTr(text){const key=S.lang+'|'+text;if(CTRC.has(key))return CTRC.get(key);CTRC.set(key,null);
-  const tl=S.lang==='zh'?'zh-CN':S.lang;fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl='+encodeURIComponent(tl)+'&dt=t&q='+encodeURIComponent(text)).then(r=>r.json()).then(j=>{
+/* 双语：每条消息都显示“原文 + 中文 / 英文”，读者手机若是第三种语言再加一行。发送时翻译一次并保存在消息里，所有人看到同一份译文 */
+const gtxT=(text,tl)=>fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl='+encodeURIComponent(tl)+'&dt=t&q='+encodeURIComponent(text)).then(r=>r.json()).then(j=>({src:String(j[2]||'').toLowerCase().split('-')[0],out:(j[0]||[]).map(x=>x[0]).join('').trim()}));
+const isZh=t=>/[\u4e00-\u9fff]/.test(t);
+async function msgTr(text){const tr={};let src='';
+  try{const e=await Promise.race([gtxT(text,'en'),new Promise((_,j)=>setTimeout(()=>j(0),5000))]);src=e.src||(isZh(text)?'zh':'');if(src!=='en')tr.en=e.out;
+    if(src!=='zh'){const z=await Promise.race([gtxT(text,'zh-CN'),new Promise((_,j)=>setTimeout(()=>j(0),5000))]);tr.zh=z.out}}catch(e){}
+  return {src,tr}}
+/* 某条消息在某种语言下的译文：先用消息里保存的，没有就在本机翻译（缓存） */
+function trOf(m,lg){if(m.tr&&m.tr[lg])return m.tr[lg];const r=chTr(m.text,lg);return r}
+function msgLangs(m){const src=m.src||(isZh(m.text)?'zh':'');const want=['zh','en'];if(S.lang&&!want.includes(S.lang))want.push(S.lang);return want.filter(l=>l!==src)}
+function chTr(text,lang){const lg=lang||S.lang;const key=lg+'|'+text;if(CTRC.has(key))return CTRC.get(key);CTRC.set(key,null);const tl0=lg==='zh'?'zh-CN':lg;
+  const tl=tl0;fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl='+encodeURIComponent(tl)+'&dt=t&q='+encodeURIComponent(text)).then(r=>r.json()).then(j=>{
     const src=(j[2]||'').toLowerCase(),out=(j[0]||[]).map(x=>x[0]).join('').trim();const same=src.split('-')[0]===tl.split('-')[0]||!out||out===text;CTRC.set(key,same?'':out);
     clearTimeout(_trSave);_trSave=setTimeout(()=>{const o={};[...CTRC.entries()].slice(-400).forEach(([k,v])=>{if(v!==null)o[k]=v});LS.set('ctr',o)},800);chatPaint()}).catch(()=>CTRC.set(key,''));return null}
 V.chat=()=>{const l=chList().map(c=>({c,last:chMsgs(c.id).slice(-1)[0],n:chUnreadOf(c.id)})).sort((a,b)=>(b.c.id===CH_ALL)-(a.c.id===CH_ALL)||((b.last||{}).t||b.c.t||0)-((a.last||{}).t||a.c.t||0));
@@ -273,11 +283,11 @@ V.chat_room=()=>{const c=chGet(S.params.ch);if(!c)return hdr(L('消息','Chat'))
 function chatMsgsHTML(c){const ms=chMsgs(c.id).slice(-300);let last=0;
   return ms.map(m=>{const mine=m.by===meId();let h='';if(m.t-last>5*60e3)h+=`<div class="xs muted" style="text-align:center;margin:14px 0 6px">${fdate(m.t)}</div>`;last=m.t;
     if(m.rc)return h+`<div class="xs muted" style="text-align:center;margin:8px 0">${mine?L('你','You'):esc(userName(m.by))} ${L('撤回了一条消息','recalled a message')}</div>`;
-    const tr=m.text?chTr(m.text):'';const body=(m.reply?`<div class="xs" style="opacity:.7;border-left:3px solid currentColor;padding-left:6px;margin-bottom:4px">${esc(userName(m.reply.by))}：${esc((m.reply.text||L('[图片]','[Photo]')).slice(0,40))}</div>`:'')+
+    const trs=m.text?msgLangs(m).map(l=>[l,trOf(m,l)]).filter(x=>x[1]&&x[1]!==m.text):[];const body=(m.reply?`<div class="xs" style="opacity:.7;border-left:3px solid currentColor;padding-left:6px;margin-bottom:4px">${esc(userName(m.reply.by))}：${esc((m.reply.text||L('[图片]','[Photo]')).slice(0,40))}</div>`:'')+
       (m.img?`<img src="${esc(m.thumb||m.img)}" style="max-width:180px;max-height:220px;border-radius:12px;display:block" loading="lazy" onclick="event.stopPropagation();viewImg('${esc(m.img)}')">`:'')+
       (m.loc?`<div onclick="event.stopPropagation();openExt('https://maps.google.com/?q=${m.loc.lat},${m.loc.lng}')" style="cursor:pointer"><b>${ic('pin',14)} ${L('位置','Location')}</b><div class="xs">${esc(m.loc.addr||(m.loc.lat.toFixed(5)+', '+m.loc.lng.toFixed(5)))}</div></div>`:'')+
       (m.text?`<div style="white-space:pre-wrap;word-break:break-word">${esc(m.text).replace(/@(\S+)/g,'<b>@$1</b>')}</div>`:'')+
-      (tr?`<div class="xs" style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.4)':'var(--line)'};opacity:.85">${ic('translate',12)} ${esc(tr)}</div>`:'');
+      trs.map(([l,t])=>`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${mine?'rgba(255,255,255,.45)':'var(--line)'};font-size:14px;opacity:.92;white-space:pre-wrap;word-break:break-word"><span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;margin-right:5px;background:${mine?'rgba(255,255,255,.22)':'var(--soft)'}" data-notr>${l==='zh'?'中':l==='en'?'EN':esc(l.toUpperCase())}</span>${esc(t)}</div>`).join('')+(m.text&&!m.tr&&m.by===meId()&&Date.now()-m.t<8000?`<div class="xs" style="opacity:.7;margin-top:4px">${L('翻译中…','Translating…')}</div>`:'');
     return h+`<div class="row" style="gap:8px;margin:8px 0;align-items:flex-start;${mine?'flex-direction:row-reverse':''}">${avatar(m.by,34)}<div style="max-width:76%;min-width:0">${mine||c.type==='dm'?'':`<div class="xs muted" style="margin:0 0 2px 4px">${esc(userName(m.by))}</div>`}
       <div onclick="msgMenu('${m.id}')" style="cursor:pointer;padding:9px 12px;border-radius:16px;${mine?'background:var(--green);color:#fff;border-top-right-radius:4px':'background:#fff;border-top-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)'}">${body}</div></div></div>`}).join('')||`<div class="sm muted" style="text-align:center;margin-top:40px">${L('说点什么吧','Say hello')}</div>`}
 function chatPaint(){if(S.view!=='chat_room')return;const box=$('#msgs'),sc=$('#screen');if(!box)return;const c=chGet(S.chId);if(!c)return;
@@ -290,7 +300,8 @@ function chPost(o){const c=chGet(S.chId);if(!c)return;if(c.id===CH_ALL&&!DB.get(
   DB.put('msg',{ch:c.id,mem:c.mem||null,t:Date.now(),lg:S.lang,...o});DB.put('chat',{...(DB.get('chat',c.id)||c),lt:Date.now()},{quiet:true});
   S.cReply=null;const r=$('#cReply');if(r)r.style.display='none';chatPaint();const sc=$('#screen');sc.scrollTop=sc.scrollHeight}
 function chSend(){const i=$('#cIn');const t=(i.value||'').trim();if(!t)return;const rp=S.cReply?{id:S.cReply.id,by:S.cReply.by,text:(S.cReply.text||'').slice(0,80)}:null;
-  chPost({text:t,reply:rp,at:S.cAt||[]});i.value='';S.cDraft='';S.cAt=[];i.style.height='auto';i.focus()}
+  const id=uid('ms');chPost({id,text:t,reply:rp,at:S.cAt||[]});i.value='';S.cDraft='';S.cAt=[];i.style.height='auto';i.focus();
+  msgTr(t).then(({src,tr})=>{const m=DB.get('msg',id);if(m&&!m.rc&&Object.keys(tr).length){DB.put('msg',{...m,src,tr});chatPaint()}})}
 function chMore(){openSheet(`<div class="sh">${L('发送','Send')}</div><div class="wtiles" style="margin-top:12px">
    <div class="wtile" style="background:var(--blue)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),false)"><div class="wti">${ic('image')}</div><div class="b">${L('相册图片','Photo')}</div></div>
    <div class="wtile" style="background:var(--green)" onclick="closeSheet(true);pickImage2(1280,(u,t)=>chPost({img:u,thumb:t}),true)"><div class="wti">${ic('camera')}</div><div class="b">${L('拍照','Camera')}</div></div>

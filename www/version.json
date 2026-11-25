@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "build": 11,
+  "version": "1.4.1",
+  "build": 12,
   "date": "2026-11-24",
   "force": false,
   "minNative": 1,
@@ -10,6 +10,8 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
+      "消息中英双语：每条消息都同时显示中文和英文（发送时翻译一次并保存，所有人看到同一份译文）；手机是其他语言的再多显示一行该语言",
+      "修复底部导航文字比图标偏右的问题（文字被物流时间线的样式加了左边距），现在图标与文字严格居中对齐",
       "底部导航改为 5 个：首页 · 工作台 · 消息（中间）· 本职常用 · 我的；图标与文字居中对齐（兼容旧手机）",
       "企业沟通：全员群、自建群、私聊（只有成员能收到），自动翻译成每个人手机的语言；图片、拍照、位置、表情、@提醒、回复、2 分钟内撤回、未读提醒",
       "新增职位：外勤人员（销售部）、运营经理（总经办）。外勤定位打卡 + 水印照片，总经理 / 销售经理 / 运营经理可查看，考勤统计可导出",
@@ -20,6 +22,8 @@
       "打印：销售单、出库单（送货签收）、入库单（到岸成本）"
     ],
     "en": [
+      "Bilingual chat: every message shows Chinese and English together (translated once when sent, the same for everyone), plus the reader’s own language if different",
+      "Fixed bottom-bar labels sitting to the right of their icons",
       "Bottom bar: 5 tabs with Chat in the middle; icons centred on all phones",
       "Company chat: everyone group, custom groups, private chats, auto-translation, photos, location, emoji, @mentions, reply, recall",
       "New positions: Field Sales and Operations Manager; GPS check-in with watermarked photo and attendance statistics",
