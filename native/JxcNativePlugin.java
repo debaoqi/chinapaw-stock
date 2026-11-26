@@ -317,6 +317,35 @@ public class JxcNativePlugin extends Plugin {
     public void setPushUser(PluginCall call) { JxcUnreadNotifications.setUser(getContext(),call.getString("userId",""));call.resolve(); }
 
     @PluginMethod
+    public void playNoticeSound(PluginCall call) {
+        try{
+            android.media.AudioManager audio=(android.media.AudioManager)getContext().getSystemService(Context.AUDIO_SERVICE);
+            if(audio!=null&&audio.getRingerMode()==android.media.AudioManager.RINGER_MODE_NORMAL){
+                android.media.Ringtone tone=android.media.RingtoneManager.getRingtone(getContext(),android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION));
+                if(tone!=null){tone.play();new Handler(Looper.getMainLooper()).postDelayed(tone::stop,1800);}
+            }
+            call.resolve();
+        }catch(Exception e){call.reject("提示音播放失败");}
+    }
+
+    @PluginMethod
+    public void notificationStatus(PluginCall call) {
+        android.app.NotificationManager nm=(android.app.NotificationManager)getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+        boolean enabled=nm!=null&&(Build.VERSION.SDK_INT<24||nm.areNotificationsEnabled());
+        if(Build.VERSION.SDK_INT>=33)enabled=enabled&&getContext().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED;
+        boolean channelEnabled=true,badgeEnabled=true;
+        if(Build.VERSION.SDK_INT>=26&&nm!=null){android.app.NotificationChannel ch=nm.getNotificationChannel("jxc-unread-sound-v2");if(ch!=null){channelEnabled=ch.getImportance()!=android.app.NotificationManager.IMPORTANCE_NONE;badgeEnabled=ch.canShowBadge();}}
+        JSObject o=new JSObject();o.put("enabled",enabled);o.put("channelEnabled",channelEnabled);o.put("badgeEnabled",badgeEnabled);call.resolve(o);
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent i=new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+        i.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);getContext().startActivity(i);call.resolve();
+    }
+
+    @PluginMethod
     public void setUnreadBadge(PluginCall call) {
         int count=Math.max(0,call.getInt("count",0));
         if(JxcUnreadNotifications.show(getContext(),count,call.getString("text",""),true))call.resolve();
