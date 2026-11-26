@@ -1,6 +1,6 @@
 {
-  "version": "1.14.1",
-  "build": 24,
+  "version": "1.14.2",
+  "build": 25,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,16 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "按住说话独立录音，增加点击开始/结束，修复首次授权和短录音提示",
-      "过滤听不清/背景声误识别，原声保留、可校对文字；明确选择录音语言",
-      "Google翻译增加已登录服务端通道，避免手机网页直连失败",
-      "请假待审批独立显示，已批准/已驳回默认折叠"
+      "移除点击录音，新语音输入仅生成文字",
+      "先核对文字，再翻译并核对后确认发送；失败不发送",
+      "请假待审批单列，已处理记录可折叠"
     ],
     "en": [
-      "Independent audio recording and tap-to-record fallback",
-      "Reject non-speech transcripts; preserve audio and allow transcript correction",
-      "Authenticated Google translation relay",
-      "Pending leave separated from collapsible completed requests"
+      "Text-only dictation with transcript and translation review",
+      "No new voice messages; translation failures prevent sending",
+      "Separate pending leave and collapsible history"
     ]
   }
 }
