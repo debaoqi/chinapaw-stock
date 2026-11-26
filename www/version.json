@@ -1,23 +1,29 @@
 {
-  "version": "1.9.1",
-  "build": 19,
+  "version": "1.10.0",
+  "build": 20,
   "date": "2026-11-26",
   "force": false,
-  "minNative": 8,
+  "minNative": 9,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "顶部只显示一个国旗：中文显示中国国旗，英文显示所在国家国旗",
-      "国旗与语言按钮左右同行，聊天输入文字居中",
-      "白色卡片和输入框统一增加细边线"
+      "补齐网页安装版后台推送与桌面角标，新增通知状态检查和提示音测试",
+      "本地语音识别模型兜底、录音转文字后翻译、历史语音重试",
+      "请假审批待办、审批结果同步考勤，运营经理参加拍照考勤",
+      "车辆铭牌拍照/上传识别、七项信息核对、条形码/二维码标签与审批入库",
+      "客户拍照签名后完成销售，同步拒绝时恢复真实状态",
+      "姓名职位同行，头像支持照片或表情；工作台统一彩色卡片，经营控制改为大字边框列表"
     ],
     "en": [
-      "Single header flag follows the active language: China for Chinese, local country for English",
-      "Flag and language switch stay on one row; chat text is centered",
-      "Thin outlines distinguish cards and form fields"
+      "Web Push and launcher badges, notification diagnostics and sound test",
+      "On-device voice transcription fallback, translation and retry",
+      "Leave review inbox and approved leave in attendance",
+      "Vehicle label OCR, reviewed archives, barcodes/QR and approved intake",
+      "Require customer photo/signature before completing sales; restore rejected sync state",
+      "Inline names/roles, custom photo/emoji avatars, colored work tiles and larger control menus"
     ]
   }
 }
