@@ -80,6 +80,11 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stro
 .chip.sm{padding:5px 10px;font-size:12px}
 .chip .n{background:rgba(0,0,0,.08);border-radius:10px;padding:0 6px;font-size:11px}
 .chip.on .n{background:rgba(255,255,255,.2)}
+/* Keep every sales status visible in two rows on mobile. */
+.chips.sales-status-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0 0;padding:0;overflow:visible}
+.sales-status-filters .chip{min-width:0;min-height:68px;padding:8px 4px;border-radius:14px;flex-direction:column;justify-content:space-between;gap:4px;white-space:normal;text-align:center;font-size:12px;line-height:1.35}
+.sales-status-filters .status-label{flex:1;display:flex;align-items:center;justify-content:center;overflow-wrap:anywhere}
+.sales-status-filters .n{flex:none;line-height:18px}
 .seg{display:flex;background:var(--card);border-radius:30px;padding:4px;margin:12px 0 4px}
 .seg button{flex:1;padding:9px 4px;border-radius:26px;font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
 .seg button.on{background:#161616;color:#fff}
