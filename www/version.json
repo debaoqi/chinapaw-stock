@@ -1,6 +1,6 @@
 {
-  "version": "1.14.6",
-  "build": 29,
+  "version": "1.14.7",
+  "build": 30,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,13 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "消息列表与聊天窗口采用微信式布局、浅绿/白气泡和方形头像",
-      "调整输入栏、图标、语音条比例；修复未读状态大白框",
-      "保留语音原声发送与播放、文字翻译和请假审批"
+      "固定聊天标题栏与滚动内容边界，避免穿入顶部区域",
+      "输入消息改为固定居中的单行输入框",
+      "同事职位改为括号文本；更换消息图标并修正搜索间距"
     ],
     "en": [
-      "WeChat-style chat list, avatars, bubbles and composer proportions",
-      "Compact audio messages and read status; typed translation retained"
+      "Separate fixed chat headers from scrolling content",
+      "Fixed centered single-line message composer",
+      "Plain parenthesized job titles, new chat icon and spaced search field"
     ]
   }
 }
