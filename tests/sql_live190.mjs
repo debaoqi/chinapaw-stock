@@ -27,6 +27,7 @@ await pg.exec(migration);assert.equal((await pg.query('select role from jxc_user
 
 const live=readFileSync(new URL('../supabase/migrations/v1.9.0_live.sql',import.meta.url),'utf8');
 await pg.exec(live);
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.2_sync.sql',import.meta.url),'utf8'));
 const reject=async(fn)=>{let blocked=false;try{await fn()}catch{blocked=true}assert.ok(blocked)};
 let tick=Date.now();const put=async(token,k,d)=>pg.query('select jxc_push($1,$2::jsonb)',[token,JSON.stringify([{k,id:d.id,d:{...d,u:++tick}}])]);
 const get=async id=>(await pg.query('select d from jxc_docs where id=$1',[id])).rows[0]?.d;
@@ -35,6 +36,7 @@ const seed=async(k,d)=>pg.query("insert into jxc_docs(k,id,d,u) values($1,$2,$3:
 await pg.exec('drop trigger jxc_stock_guard on jxc_docs');
 await seed('moves',{id:'old-in',type:'po_in',pid:'p',wh:'W1',qty:20,t:1});
 await pg.exec(live);
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.2_sync.sql',import.meta.url),'utf8'));
 await seed('products',{id:'p',n:{zh:'test'},cost:88});
 await put('sales','so',{id:'cash',status:'submitted',pay:'cash',by:'sales',cus:'c',wh:'W1',items:[{pid:'p',qty:4,price:30}]});
 await reject(async()=>put('cashier','so',{...(await get('cash')),status:'approved'}));
@@ -48,6 +50,10 @@ await put('keeper','moves',{id:'out2',type:'so_out',ref:'cash',pid:'p',wh:'W1',q
 await put('keeper','so',{...(await get('cash')),status:'shipped',items:[{pid:'p',qty:4,price:30,shipped:4}]});
 await put('keeper','moves',{id:'out2',type:'so_out',ref:'cash',pid:'p',wh:'W1',qty:-2});
 await reject(()=>put('keeper','moves',{id:'repeat-other-id',type:'so_out',ref:'cash',pid:'p',wh:'W1',qty:-1}));
+const badComplete={...(await get('cash')),status:'done',u:++tick};
+let completionError='';try{await pg.query('select jxc_push($1,$2::jsonb)',['keeper',JSON.stringify([{k:'exp',id:'rollback-expense',d:{id:'rollback-expense',status:'submitted',amt:1,note:'atomic test',u:++tick}},{k:'so',id:'cash',d:badComplete}])])}catch(e){completionError=e.message}
+assert.ok(completionError.includes('Photo and customer signature required')&&completionError.includes('Approval changed or permission denied')&&completionError.includes('["cash"]'));
+assert.equal(await get('rollback-expense'),undefined,'all-or-nothing business batch');assert.equal((await get('cash')).status,'shipped','server state stays shipped after failed completion');
 await put('sales','receipt',{id:'receipt-cash',so:'cash',by:'sales',customerName:'Customer',photo:'data:image/jpeg;base64,test',signature:'data:image/png;base64,'+'a'.repeat(300)});
 await put('keeper','so',{...(await get('cash')),status:'done'});
 await put('sales','leave',{id:'leave-half',by:'sales',days:0.5,startDate:'2026-11-25',endDate:'2026-11-25',status:'submitted'});
@@ -68,4 +74,34 @@ await put('sales','leave',{id:'new-leave-push',by:'sales',days:3,startDate:'2026
 assert.equal((await pg.query("select count(*) n from jxc_push_events where event_key like 'leave:new-leave-push:%'")).rows[0].n,1);
 await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.0_services.sql',import.meta.url),'utf8'));
 console.log('LIVE SERVICES PASS: private idempotent daily backup and new approval push routing');
+
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.2_leave.sql',import.meta.url),'utf8'));
+await put('ops','leave',{id:'ops-leave',by:'ops',status:'submitted',startDate:'2026-11-26',endDate:'2026-11-26',days:.5,session:'pm',reason:'appointment'});
+await reject(async()=>put('ops','leave',{...(await get('ops-leave')),status:'approved'}));
+await put('new-gm','leave',{...(await get('ops-leave')),status:'approved',approval:{by:gm,t:Date.now(),note:'Approved'}});assert.equal((await get('ops-leave')).status,'approved');
+
+
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.2_vehicles.sql',import.meta.url),'utf8'));
+const vehicle={id:'vehicle-test',by:'keeper',status:'saved',model:'TEST-MODEL',vin:'TESTVIN1234567890',motor:'MOTOR123',configuration:'Test spec',color:'Black',date:'2026-11-26',vehicleCode:'UNIT12345',photo:'https://example.test/label.jpg',reviewedBy:'keeper',productId:'p'};
+await put('keeper','vehicle',vehicle);
+await reject(()=>put('sales','vehicle',{...vehicle,id:'unauthorized',by:'sales',reviewedBy:'sales',vin:'TESTVIN1234567891'}));
+await reject(()=>put('keeper','vehicle',{...vehicle,id:'duplicate-vin'}));
+assert.equal((await pg.query("select jxc_pull('sales',0) p")).rows[0].p.rows.some(x=>x.k==='vehicle'),false);
+const vehicleOpening={id:'vehicle-opening',by:'keeper',type:'opening',vehicleId:vehicle.id,status:'pending',wh:'W1',items:[{pid:'p',qty:1,uc:50,batch:vehicle.vin}]};
+await put('keeper','stockreq',vehicleOpening);
+await reject(()=>put('keeper','stockreq',{...vehicleOpening,id:'duplicate-intake'}));
+await reject(()=>put('keeper','stockreq',{...vehicleOpening,id:'quantity-lie',items:[{pid:'p',qty:2,uc:50,batch:vehicle.vin}]}));
+assert.equal((await pg.query("select count(*) n from jxc_docs where k='moves' and d->>'ref'='vehicle-opening'")).rows[0].n,0);
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.9.2_webpush.sql',import.meta.url),'utf8'));
+const subscription={endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-test',keys:{p256dh:'a'.repeat(87),auth:'b'.repeat(22)}};
+await pg.query('select jxc_register_web_push($1,$2::jsonb)',['sales',JSON.stringify(subscription)]);
+await reject(()=>pg.query('select jxc_register_web_push($1,$2::jsonb)',['sales',JSON.stringify({...subscription,endpoint:'https://127.0.0.1/internal'})]));
+await pg.query('select jxc_unregister_web_push($1,$2)',['outsider',subscription.endpoint]);assert.equal((await pg.query('select count(*) n from jxc_web_push_subscriptions')).rows[0].n,1);
+assert.equal((await pg.query("select has_table_privilege('anon','jxc_web_push_keys','select') v")).rows[0].v,false);
+console.log('V192 PASS: operations leave escalation, archive permissions, unique VIN, duplicate/quantity intake guard, no stock before approval, private web subscriptions, endpoint validation and owner-only unregister.');
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.10.0_profiles.sql',import.meta.url),'utf8'));
+await put('sales','profile',{id:'sales',userId:'sales',by:'sales',emoji:'🐼',photo:''});
+await reject(()=>put('outsider','profile',{id:'sales',userId:'sales',by:'sales',emoji:'X',photo:''}));
+assert.equal((await get('sales')).emoji,'🐼');
+console.log('Avatar PASS: own profile changes only; other accounts cannot overwrite.');
 await pg.close();

@@ -13,6 +13,8 @@ let app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');app=app.re
 vm.runInContext(app,ctx);
 vm.runInContext(readFileSync(new URL('../src/enterprise.js',import.meta.url),'utf8'),ctx);
 vm.runInContext(readFileSync(new URL('../src/imports.js',import.meta.url),'utf8'),ctx);
+vm.runInContext(readFileSync(new URL('../src/vehicles.js',import.meta.url),'utf8'),ctx);
+vm.runInContext(readFileSync(new URL('../src/profiles.js',import.meta.url),'utf8'),ctx);
 await vm.runInContext('seedDemo()',ctx);
 const results=vm.runInContext(`(()=>{const results=[];for(const role of ROLE_ORDER){S.me={id:'test-'+role,role,name:'Test'};for(const view of ['work','leave','stock_requests','money_accounts','ledger','receivables','payables','price_lists','transfers','replenishment','business_control','import_data','opening_balances']){const html=V[view]();if(typeof html!=='string')throw new Error(role+' '+view);results.push(role+':'+view)}}return results})()`,ctx);
 assert.equal(results.length,130);
@@ -20,4 +22,9 @@ assert.equal(vm.runInContext("own('fin_pay',{role:'chair'})&&own('po_recv',{role
 assert.equal(vm.runInContext('workTime(8.5)',ctx),'08:30');
 assert.equal(vm.runInContext(`(()=>{DB.d.moves=[{pid:'p',qty:100,uc:10,t:1},{pid:'p',qty:-100,uc:10,t:2},{pid:'p',qty:100,uc:20,t:3}];DB.ver++;return avgCost('p')})()`,ctx),20);
 assert.equal(vm.runInContext(`(()=>{DB.d.so=[{id:'income-order',items:[{pid:'p',qty:9,price:12}],status:'submitted'}];DB.d.moves=[{type:'so_out',ref:'income-order',pid:'p',qty:-2,t:10},{type:'po_in',pid:'p',qty:100,t:10,uc:1},{type:'so_out',ref:'income-order',pid:'p',qty:-1,revenue:15,t:20}];return confirmedRevenue(10,21)})()`,ctx),39);
+assert.equal(vm.runInContext(`(()=>{S.me={id:'approver',role:'ops'};DB.d.users=[{id:'operator',role:'ops'},{id:'employee',role:'sales'}];return leaveCan({by:'employee',days:1,status:'submitted'})&&!leaveCan({by:'operator',days:1,status:'submitted'})})()`,ctx),true);
+assert.equal(vm.runInContext(`(()=>{S.me={id:'gm',role:'gm'};return leaveCan({by:'operator',days:1,status:'submitted'})})()`,ctx),true);
+assert.equal(vm.runInContext(`(()=>{DB.d.leave=[{by:'employee',days:.5,startDate:'2026-11-26',endDate:'2026-11-26',session:'pm',status:'approved'},{by:'employee',days:1,startDate:'2026-11-27',endDate:'2026-11-27',status:'submitted'}];return leaveSlots('employee','2026-11-26').pm&&!leaveSlots('employee','2026-11-26').am&&leaveMonthDays('employee','2026-11')===.5})()`,ctx),true);
+assert.equal(vm.runInContext("own('att',{role:'ops'})&&own('att',{role:'gm'})&&own('att',{role:'clerk'})",ctx),true);
+assert.equal(vm.runInContext("vehicleParse('车型 TEST-100 车架号 TESTVIN1234567890 电机号 MOTOR123 配置 DISC/32AH 颜色 Black 日期 2026-4-17 整车码 JH2026041700').date",ctx),'2026-04-17');
 console.log('UI logic PASS: 130 role/view renderings, chairman permissions, attendance times and remaining-stock valuation. DOM stubs do not replace real device interaction tests.');
