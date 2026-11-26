@@ -32,7 +32,7 @@ function render(top,soft){
   document.body.classList.toggle('chat-ui',['chat','chat_room','chat_leave'].includes(S.view));document.body.classList.toggle('chat-room-ui',S.view==='chat_room');const sc=$('#screen');let h='';try{h=(V[S.view]||V.home)()}catch(e){console.error(e);h=`<div class="pad"><div class="note-r">${esc(e.message)}</div></div>`}
   /* soft = 后台数据更新后的刷新：不播放淡入动画、保持滚动位置（避免闪动） */
   sc.innerHTML=`<div class="${soft?'':'fade'}">${S.me?topBars():''}${h}<div class="scroll-end-space" aria-hidden="true"></div></div>`;S.rv=DB.ver;
-  const fx=$('#fixed');fx.innerHTML='';sc.querySelectorAll('.bbar').forEach(e=>fx.appendChild(e));
+  const fx=$('#fixed');fx.innerHTML='';sc.querySelectorAll('.bbar').forEach(e=>fx.appendChild(e));if(['chat','chat_room','chat_leave'].includes(S.view)){const header=sc.querySelector('.chat-home-head')||sc.querySelector('.hdr');if(header){header.classList.add('chat-fixed-header');fx.appendChild(header)}}
   const isTab=TABS().some(t=>t[0]===S.view)&&!!S.me;sc.classList.toggle('nonav',!isTab);
   $('#navwrap').innerHTML=S.me&&(isTab||WEB)?tnav():'';document.body.classList.toggle('authed',!!S.me);
   if(top)sc.scrollTop=0;
@@ -82,10 +82,10 @@ function todoCount(){let n=0;
 /* 底部导航：每个职位最多 5 个，“消息”固定在中间；其余功能都在“工作台” */
 function TABS(){if(!S.me)return [];const r=S.me.role;const P={chair:['report','chart',L('报表','Reports')],gm:['fin','calc',L('财务','Finance')],ops:['report','chart',L('报表','Reports')],buyer:['stock','box',L('库存','Stock')],sales:['docs','doc',L('单据','Orders')],
    field:['att','pin',L('打卡','Check-in')],keeper:['stock','box',L('库存','Stock')],acct:['fin','calc',L('财务','Finance')],cashier:['fin','calc',L('财务','Finance')]}[r]||['docs','doc',L('单据','Orders')];
-  return [['home','home',L('首页','Home')],['work','grid',L('工作台','Work')],['chat','chat',L('消息','Chat')],P,['me','user',L('我的','Me')]]}
+  return [['home','home',L('首页','Home')],['work','grid',L('工作台','Work')],['chat','messages-square',L('消息','Chat')],P,['me','user',L('我的','Me')]]}
 function tnav(){const v=S.view;const b=n=>n?`<span class="cnt">${n>99?'99+':n}</span>`:'';
   const cnt={docs:todoCount(),fin:finTodo(),work:todoCount()+expTodo(),chat:chatUnread(),me:Alerts.unread()};
-  let h=TABS().map(([k,icon,label])=>`<button class="${v===k?'on':''}" onclick="tab('${k}')" aria-label="${esc(label)}"><span class="ti">${ic(icon,22)}${b(cnt[k])}</span><span class="tl">${label}</span></button>`).join('');
+  let h=TABS().map(([k,icon,label])=>`<button class="${v===k?'on':''} ${k==='chat'?'nav-chat':''}" onclick="tab('${k}')" aria-label="${esc(label)}"><span class="ti">${ic(icon,22)}${b(cnt[k])}</span><span class="tl">${label}</span></button>`).join('');
   if(WEB){h=`<div class="wbrand"><img class="logo" src="${LOGO}" alt=""><b class="one">${BRAND()}</b></div>`+h+
     [can('report')?['report','chart',L('简易报表','Reports')]:null,['msgs','bell',L('消息','Messages')],can('mgmt')?['mgmt','gear',L('后台管理','Management')]:null].filter(Boolean).map(([k,icon,label])=>`<button class="${v===k||(k==='mgmt'&&v.startsWith('m_'))?'on':''}" onclick="tab('${k}')"><span class="ti">${ic(icon,22)}${k==='msgs'?b(Alerts.unread()):''}</span><span class="tl">${label}</span></button>`).join('')+
     `<div class="wfoot"><div class="row gap6">${ctryBtn()}${langBtn()}${curBtn()}</div><div class="xs" style="margin-top:8px;opacity:.7">${esc(nmP(S.me.name))} · ${esc(userTitle(S.me))}</div></div>`}
@@ -346,7 +346,7 @@ V.chat_room=()=>{const c=chGet(S.params.ch);if(!c)return hdr(L('消息','Chat'))
     <div id="cEmo" style="display:none;flex-wrap:wrap;gap:4px;max-height:150px;overflow:auto">${EMO.map(e=>`<span style="font-size:24px;padding:4px;cursor:pointer" onclick="chIns('${e}')">${e}</span>`).join('')}</div>
     <div class="row" style="gap:6px;align-items:flex-end">
      <button class="icbtn" id="cMic" style="flex:none;width:42px;height:42px" onclick="vMode(!S.cVoice)" aria-label="${S.cVoice?L('键盘','Keyboard'):L('语音','Voice')}">${ic(S.cVoice?'keyboard':'volume-2',26)}</button>
-     <div id="cTxtRow" style="display:${S.cVoice?'none':'flex'};flex:1;min-width:0"><textarea id="cIn" class="inp" rows="1" style="flex:1;min-width:0;resize:none;height:40px;min-height:40px;max-height:110px;padding:10px 12px;font-size:15px;line-height:20px;text-align:center;box-sizing:border-box;background:var(--card)" placeholder="${L('输入消息','Message')}" oninput="S.cDraft=this.value;this.style.height='40px';this.style.height=Math.min(110,this.scrollHeight)+'px';chAt(this);chBtns()">${esc(S.cDraft||'')}</textarea></div>
+     <div id="cTxtRow" style="display:${S.cVoice?'none':'flex'};flex:1;min-width:0"><input id="cIn" type="text" class="inp" autocomplete="off" style="flex:1;min-width:0;height:40px;padding:0 8px;font-size:16px;line-height:40px;text-align:center;box-sizing:border-box;background:var(--card)" placeholder="${L('输入消息','Message')}" value="${esc(S.cDraft||'')}" oninput="S.cDraft=this.value;chAt(this);chBtns()"></div>
      <button id="cVoiceBtn" class="inp" style="display:${S.cVoice?'flex':'none'};flex:1;min-width:0;height:42px;padding:0 12px;align-items:center;justify-content:center;text-align:center;line-height:normal;font-weight:800;background:var(--card);touch-action:none;user-select:none;-webkit-user-select:none" onpointerdown="vStart(event)" onpointermove="vMove(event)" onpointerup="vStop(false)" onpointercancel="vStop(true)" onlostpointercapture="if(VREC)vStop(true)" oncontextmenu="return false">${L('按住说话','Hold to talk')}</button>
      <button class="icbtn" aria-label="${L('表情','Emoji')}" style="flex:none;width:42px;height:42px" onclick="const e=$('#cEmo');e.style.display=e.style.display==='none'?'flex':'none'">${ic('smile',26)}</button>
      <button class="icbtn" id="cPlus" aria-label="${L('附件','Attachments')}" style="flex:none;width:42px;height:42px;display:${(S.cDraft||'').trim()&&!S.cVoice?'none':'flex'}" onclick="chMore()">${ic('circle-plus',26)}</button>
