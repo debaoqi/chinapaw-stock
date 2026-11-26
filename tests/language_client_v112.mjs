@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {ctx,vm} from './ui_v190.mjs';
+const run=code=>vm.runInContext(code,ctx);const assets=new Map();let transcribes=0,translations=0,finishTranslation;
+ctx.mockAsset=async(action,key,value)=>{if(action==='put')assets.set(key,value);if(action==='delete')assets.delete(key);return assets.get(key)};
+ctx.mockTranscribe=async()=>{transcribes++;return 'Please deliver twelve boxes tomorrow.'};
+ctx.mockTranslate=()=>{translations++;return new Promise(resolve=>finishTranslation=resolve)};
+run("localAsset=mockAsset;cloudTranscribe=mockTranscribe;languageTranslate=mockTranslate;commitBusiness=async()=>{};S.view='home';S.me={id:'speaker',role:'sales'};S.token='session-A';DB.d.msg=[{id:'voice-a',by:'speaker',voice:'voice.wav',ch:'C_all',t:1}];DB.ver++;LS.set('speechEngine','cloud');");
+ctx.testBlob=new Blob(['audio'],{type:'audio/wav'});
+const first=run("queueVoiceText('voice-a',testBlob)");const second=run("queueVoiceText('voice-a',testBlob)");assert.equal(first,second,'Queued/active clicks use one transcription');await first;
+assert.equal(transcribes,1);assert.equal(run("DB.get('msg','voice-a').text"),'Please deliver twelve boxes tomorrow.');assert.equal(run("DB.get('msg','voice-a').tr"),undefined,'Transcript is visible before translation completes');assert.equal(translations,1);
+finishTranslation({src:'en',tr:{zh:'明天请送十二箱。'}});await new Promise(resolve=>setImmediate(resolve));assert.equal(run("DB.get('msg','voice-a').tr.zh"),'明天请送十二箱。');
+run("DB.d.msg.push({id:'incoming',by:'colleague',text:'Hello',ch:'C_all'});DB.ver++;");assert.equal(run("applyMessageTranslation('incoming','Hello',{src:'en',tr:{zh:'你好'},forUser:'speaker'})"),true);assert.equal(run("DB.get('msg','incoming').tr"),undefined,'Readers never overwrite sender documents');assert.equal(run("S.localVoiceText.incoming.tr.zh"),'你好');
+assert.equal(run("applyMessageTranslation('incoming','old text',{src:'en',tr:{zh:'错误'},forUser:'speaker'})"),false,'Stale source text is rejected');assert.equal(run("applyMessageTranslation('incoming','Hello',{src:'en',tr:{zh:'错误'},forUser:'other-user'})"),false,'Cross-account result is rejected');
+run("S.localVoiceText.incoming={text:'Local transcript'};DB.d.msg.find(m=>m.id==='incoming').text='';DB.ver++;");assert.equal(run("applyMessageTranslation('incoming','Local transcript',{src:'en',tr:{zh:'本地文字'},forUser:'speaker'})"),true);
+console.log('Language client PASS: transcript before translation, duplicate suppression, stale-text and account isolation, receiver-local translation and local transcript support.');

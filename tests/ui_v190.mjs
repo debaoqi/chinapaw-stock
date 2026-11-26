@@ -13,6 +13,8 @@ let app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');app=app.re
 vm.runInContext(app,ctx);
 vm.runInContext(readFileSync(new URL('../src/enterprise.js',import.meta.url),'utf8'),ctx);
 vm.runInContext(readFileSync(new URL('../src/imports.js',import.meta.url),'utf8'),ctx);
+vm.runInContext(readFileSync(new URL('../src/language_service.js',import.meta.url),'utf8'),ctx);
+vm.runInContext(readFileSync(new URL('../src/local_speech.js',import.meta.url),'utf8'),ctx);
 vm.runInContext(readFileSync(new URL('../src/vehicles.js',import.meta.url),'utf8'),ctx);
 vm.runInContext(readFileSync(new URL('../src/profiles.js',import.meta.url),'utf8'),ctx);
 await vm.runInContext('seedDemo()',ctx);
@@ -29,3 +31,5 @@ assert.equal(vm.runInContext("own('att',{role:'ops'})&&own('att',{role:'gm'})&&o
 assert.equal(vm.runInContext("vehicleParse('车型 TEST-100 车架号 TESTVIN1234567890 电机号 MOTOR123 配置 DISC/32AH 颜色 Black 日期 2026-4-17 整车码 JH2026041700').date",ctx),'2026-04-17');
 assert.equal(vm.runInContext(`(()=>{const d={vin:'OLD',model:'Manual model',manualFields:['model']};vehicleApplyAI(d,{fields:{vin:'NEW',model:'AI model',motor:''},uncertain:['motor']});return d.vin==='NEW'&&d.model==='Manual model'&&d.motor===''&&d.aiCandidates.model==='AI model'})()`,ctx),true);
 console.log('UI logic PASS: 130 role/view renderings, chairman permissions, attendance times and remaining-stock valuation. DOM stubs do not replace real device interaction tests.');
+
+export {ctx,vm};
