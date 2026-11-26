@@ -1,7 +1,7 @@
 {
-  "version": "1.9.0",
-  "build": 18,
-  "date": "2026-11-25",
+  "version": "1.9.1",
+  "build": 19,
+  "date": "2026-11-26",
   "force": false,
   "minNative": 8,
   "forceNative": false,
@@ -10,16 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "董事长可执行财务、库管、出纳等操作；考勤08:30–17:00",
-      "新增请假、已读回执与客户拍照手写签收",
-      "库存服务器校验、出库固定成本及分批发货",
-      "历史成本待核对时仍可出库，相关利润暂不展示；财务扩展后续启用"
+      "顶部只显示一个国旗：中文显示中国国旗，英文显示所在国家国旗",
+      "国旗与语言按钮左右同行，聊天输入文字居中",
+      "白色卡片和输入框统一增加细边线"
     ],
     "en": [
-      "Chairman operational permissions; work hours 08:30–17:00",
-      "Leave requests, read receipts and photo/signature delivery evidence",
-      "Server stock controls, fixed shipment costs and partial dispatch",
-      "Legacy cost uncertainty no longer blocks shipment; affected profit is withheld. Accounting extensions remain disabled."
+      "Single header flag follows the active language: China for Chinese, local country for English",
+      "Flag and language switch stay on one row; chat text is centered",
+      "Thin outlines distinguish cards and form fields"
     ]
   }
 }

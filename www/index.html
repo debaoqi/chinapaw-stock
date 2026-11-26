@@ -296,6 +296,15 @@ body.web .tnav::-webkit-scrollbar{display:none}
 .rolebtn.on{border-color:var(--rc);background:var(--rc);color:#fff}
 .rolebtn.on:before{background:#fff}
 
+/* Consistent outlines for white surfaces; preserve semantic/focus borders. */
+:root{--surface-line:#D8D0C1;--control-line:#BDB5A7}
+.langbtn{display:inline-flex;flex-direction:row;white-space:nowrap;min-width:36px;width:auto;padding:0 8px;line-height:1;flex-shrink:0}
+.box,.wcard,.wtile,.stat,.searchbar{border:1px solid var(--surface-line)}
+.inp{border:1px solid var(--control-line)}
+.inp:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(11,122,75,.10)}
+#cIn{text-align:center;box-sizing:border-box;padding:9.5px 12px!important;line-height:21px}
+#cIn::placeholder{text-align:center;opacity:1}
+
 </style>
 </head>
 <body class="">
@@ -315,7 +324,7 @@ window.TR_ALL=[" (optional)", " (required)", " change(s) rejected (no permission
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.9.0',APP_BUILD=18;
+const APP_VER='1.9.1',APP_BUILD=19;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -424,8 +433,8 @@ async function ensureLang(l){if(['zh','en'].includes(l))return true;const d=trDi
   const miss=[...new Set(all)].filter(k=>k&&/[A-Za-z]/.test(k)&&d[k]==null);if(!miss.length)return true;if(!navigator.onLine)return false;
   const v=await gtx(miss,l);miss.forEach((k,i)=>{if(v[i])d[k]=v[i]});LS.set('tr_'+l,d);return true}
 function langBtn(){const ls=langsOf(S.country);const i=ls.indexOf(S.lang);const nx=ls[(i+1)%ls.length];const lab=nx==='zh'?'中':nx.toUpperCase();
-  return `<button class="langbtn" data-notr onclick="setLang('${nx}')" title="${esc(LN[nx]||nx)}">${langFlag(nx)} ${lab}</button>`}
-function ctryBtn(){return `<button class="langbtn" data-notr onclick="countrySheet()" title="${esc(C().en)}" style="font-size:18px">${flagE(S.country)}</button>`}
+  return `<button class="langbtn" data-notr onclick="setLang('${nx}')" title="${esc(LN[nx]||nx)}">${lab}</button>`}
+function ctryBtn(){return `<button class="langbtn" data-notr onclick="countrySheet()" title="${esc(C().en)}" style="font-size:18px">${flagE(S.lang==='zh'?'CN':S.country)}</button>`}
 async function setLang(l,quiet){const prev=S.lang;LS.set('lang',l);
   if(!['zh','en'].includes(l)&&!quiet){const d=trDict(l);if(Object.keys(d).length<50){toast((LN[l]||l)+' …',false);await ensureLang(l)}else ensureLang(l)}
   S.lang=l;document.documentElement.lang=l==='zh'?'zh-CN':l;document.documentElement.dir=RTL.includes(l)?'rtl':'ltr';
