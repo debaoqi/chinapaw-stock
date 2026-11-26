@@ -1,6 +1,6 @@
 {
-  "version": "1.12.0",
-  "build": 22,
+  "version": "1.14.0",
+  "build": 23,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,16 +10,20 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "按钮边框、触控尺寸、表单间距和长文字换行统一调整",
-      "底部滚动空间随导航和固定操作栏实际高度调整，最后一行色块不再遮挡",
-      "OpenAI语音转写与翻译接口、保留原声、先文字后翻译、失败重试和预算保护",
-      "减少聊天重复渲染，限制同时处理任务，修复异步结果和账号切换隔离"
+      "Google基础翻译与设备语音识别；可选择说话语言，保留原文原声并重试",
+      "消息顶部请假申请与审批、全员状态概览；聊天可折叠、隐藏，点击同事恢复",
+      "按实际出库确认应收，预收余额可抵扣多单；退款与退货红字冲销",
+      "收款与核对分离，服务器连续单号和日期，审批门槛可配置",
+      "批准销售占用库存，冻结盘点、跨批次盘亏；退货待检、质检与报损审批",
+      "采购按实到结案、保留取消单定金；供应商发票三单匹配、公司汇率与汇兑损益"
     ],
     "en": [
-      "Clear action buttons, touch targets, form spacing and wrapped labels",
-      "Measured bottom navigation clearance keeps the last work tiles visible",
-      "OpenAI speech and translation integration, transcript-first UI, retry and budget protection",
-      "Less chat repainting, bounded processing and account-safe asynchronous results"
+      "Google basic translation and device speech with selectable spoken language",
+      "Leave and approvals at the top of Chat; collapsible and hidden conversations",
+      "Shipment-based receivables, customer advances, multi-order allocation and refunds",
+      "Separate receipt recording and verification; server numbering/time and approval thresholds",
+      "Stock reservations, frozen counts, batch losses, quarantine and write-offs",
+      "Received-quantity purchase closure, supplier invoices, three-way matching and central FX"
     ]
   }
 }
