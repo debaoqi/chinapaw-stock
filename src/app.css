@@ -277,3 +277,12 @@ body.web .tnav::-webkit-scrollbar{display:none}
 .rolebtn:before{content:"";display:block;width:10px;height:10px;border-radius:50%;background:var(--rc);margin:0 auto 6px}
 .rolebtn.on{border-color:var(--rc);background:var(--rc);color:#fff}
 .rolebtn.on:before{background:#fff}
+
+/* Consistent outlines for white surfaces; preserve semantic/focus borders. */
+:root{--surface-line:#D8D0C1;--control-line:#BDB5A7}
+.langbtn{display:inline-flex;flex-direction:row;white-space:nowrap;min-width:36px;width:auto;padding:0 8px;line-height:1;flex-shrink:0}
+.box,.wcard,.wtile,.stat,.searchbar{border:1px solid var(--surface-line)}
+.inp{border:1px solid var(--control-line)}
+.inp:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(11,122,75,.10)}
+#cIn{text-align:center;box-sizing:border-box;padding:9.5px 12px!important;line-height:21px}
+#cIn::placeholder{text-align:center;opacity:1}
