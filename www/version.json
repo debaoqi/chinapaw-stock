@@ -1,6 +1,6 @@
 {
-  "version": "1.10.0",
-  "build": 20,
+  "version": "1.11.0",
+  "build": 21,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,20 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "补齐网页安装版后台推送与桌面角标，新增通知状态检查和提示音测试",
-      "本地语音识别模型兜底、录音转文字后翻译、历史语音重试",
-      "请假审批待办、审批结果同步考勤，运营经理参加拍照考勤",
-      "车辆铭牌拍照/上传识别、七项信息核对、条形码/二维码标签与审批入库",
-      "客户拍照签名后完成销售，同步拒绝时恢复真实状态",
-      "姓名职位同行，头像支持照片或表情；工作台统一彩色卡片，经营控制改为大字边框列表"
+      "车辆铭牌改用服务端Gemini图片识别，免费额度不足时停止调用",
+      "换图清空旧车信息，重新识别保留手工修正，可疑字段突出提示",
+      "原图与草稿保留，核对后归档，审批入库流程保持有效"
     ],
     "en": [
-      "Web Push and launcher badges, notification diagnostics and sound test",
-      "On-device voice transcription fallback, translation and retry",
-      "Leave review inbox and approved leave in attendance",
-      "Vehicle label OCR, reviewed archives, barcodes/QR and approved intake",
-      "Require customer photo/signature before completing sales; restore rejected sync state",
-      "Inline names/roles, custom photo/emoji avatars, colored work tiles and larger control menus"
+      "Server-side Gemini vehicle label recognition; stop when free quota is exhausted",
+      "New photos clear stale fields; AI rechecks preserve manual corrections and flag uncertain fields",
+      "Original image and draft retained; review before archiving and approved intake"
     ]
   }
 }
