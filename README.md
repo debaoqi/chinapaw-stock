@@ -1,3 +1,36 @@
+## v1.14.0 / build 23（待发布）
+
+当前语音方案以本段为准：Google 基础翻译 + 设备系统语音识别；OpenAI 和 Azure 付费语言接口停用。
+基础翻译沿用无需密钥的 Google 网页通道，并非 Google Cloud 官方 API，会受到网络、浏览器 CORS 和限流影响。
+录音可先发原声，系统识别不可用时可使用本地模型；设置中可以单独选择实际说话语言。
+公司暂未注册 VAT，本版不自动补税，不将销售单标作 VAT 税务发票。
+
+服务器与网页须配套升级。按顺序执行 v1.13.0_finance_po.sql、v1.13.0_finance_arap.sql、
+v1.13.0_chat_leave.sql、v1.14.0_language_off.sql、v1.14.0_integrity.sql、
+v1.14.1_settlement.sql、v1.14.2_invoices.sql、v1.14.3_fx_credit.sql、v1.14.4_payment_caps.sql。
+发布包提供合并为一个事务的脚本；脚本不删除已有单据、不追改历史金额。
+部署 jxc-language 的停用实现，然后发布 www/ 页面。本版无需新建 API 密钥。
+
+正式单号由服务器按类型和年月连续分配；手机离线号仅是临时编号。
+新盘点必须先由服务器冻结仓库并建立快照，终审或驳回后才解冻；旧快照不能直接终审。
+同一商品同价重复行合并，不同价需先确认一行价格；旧批准单如有重复行，先受控纠正再出库。
+新货款付款需采购单、真实入库流水和供应商发票匹配；定金通过预付款审批。
+既有已批准货款在执行付款时也要补齐三单匹配。日汇率由会计/总经理/董事长发布，
+未配置汇率时暂停外币采购。原币报价和付款汇率分开留痕，并记录已实现汇兑损益。
+总账与期初资金扩展仍保持关闭，需另行核对历史成本、旧币种与期初余额。
+
+真实手机的麦克风、系统识别语言包和播放能力仍须在设备上验收。
+本地测试通过不等于线上已部署；以发布核验记录为准。
+
+
+## v1.12.0 / web build22
+
+统一按钮边框与触控外观，修复标签/入库表单间距及长按钮文字换行；根据底部导航和固定操作栏实测高度增加真实滚动留白，最后一行工作台色块不再遮挡。减少无变化的聊天DOM重绘，保留soft刷新参数。
+
+v1.12.0曾准备付费语言接口，现已按最新要求停用。当前方案见上方版本说明。
+
+新增检查：`node tests/language_v112.mjs`、`node tests/language_client_v112.mjs`；既有SQL、页面、Web Push与FCM检查继续运行。
+
 车辆铭牌 AI 识别（v1.11.0 / web build21）：前端不含识别密钥，服务端 `jxc-vehicle-ocr` 校验现有会话和职位；`v1.11.0_vehicle_ai.sql` 仅创建识别日志和额度函数，不修改库存、单据或账号。Google 免费项目不绑定结算，额度用完停止调用；上游临时故障最多重试两次，不切换收费服务。每账号每天最多30次，全项目每天最多100次（系统保护上限，以Google实际额度为准）。上传照片会交给Google识别，免费层可能用于改进Google产品。原图与草稿保留，换图清空旧车字段，重新识别保留手工修正；AI结果必须人工核对后归档，入库仍需审批。Google服务繁忙或额度不足时，页面保留草稿并提供基础离线OCR。真实图片准确率以发布验证记录为准，不承诺所有图片均正确。
 
 本次为网页及服务端更新；现有Android build9加载同一网站，继续使用原安装包。
@@ -79,3 +112,5 @@
 - 真机验收需实际登录 APP，允许通知、发送由用户发起的测试群消息，并分别检查前台、后台、划掉 APP 和已读清除。
 
 实现依据：[Android 通知角标](https://developer.android.com/develop/ui/views/notifications/badges)、[FCM Android 接收](https://firebase.google.com/docs/cloud-messaging/android/receive-messages)、[Supabase 推送函数](https://supabase.com/docs/guides/functions/examples/push-notifications?platform=fcm)、[Supabase Cron 安装](https://supabase.com/docs/guides/cron/install)。
+
+

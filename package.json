@@ -1,6 +1,6 @@
 {
   "name": "chinapaw-stock",
-  "version": "1.8.0",
+  "version": "1.14.0",
   "private": true,
   "dependencies": {
     "@capacitor/android": "8.6.0",
@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build:web": "python build.py",
-    "test:sql": "node tests/sql_v170.mjs"
+    "test:sql": "node tests/sql_v170.mjs",
+    "test:integrity": "node tests/ui_integrity_v114.mjs && node tests/integrity_v114.mjs && node tests/settlement_v114.mjs && node tests/quality_v114.mjs"
   }
 }
