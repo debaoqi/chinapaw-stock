@@ -1,0 +1,11 @@
+import {ctx,vm} from './ui_v190.mjs';
+import assert from 'node:assert/strict';
+const run=s=>vm.runInContext(s,ctx);let calls=0,fail=false;
+ctx.AbortSignal=AbortSignal;
+ctx.fetch=async(url,opts)=>{calls++;assert.ok(url.startsWith('https://translate.googleapis.com/translate_a/single?'));assert.equal(opts.credentials,'omit');assert.ok(!url.includes('openai')&&!url.includes('azure'));if(fail)return {ok:false,status:503};const u=new URL(url),target=u.searchParams.get('tl');return {ok:true,json:async()=>[[[target==='zh-CN'?'明天送十二箱。':'Deliver twelve boxes tomorrow.']],null,'en']}};
+run("S.me={id:'u1',role:'sales'};S.lang='zh';S.token='one';");
+let r=await run("languageTranslate('Deliver twelve boxes tomorrow.')");assert.equal(r.tr.zh,'明天送十二箱。');assert.equal(calls,2);await run("languageTranslate('Deliver twelve boxes tomorrow.')");assert.equal(calls,2,'Repeated translations share cached result');
+run("S.me={id:'u2',role:'sales'}");await run("languageTranslate('Deliver twelve boxes tomorrow.')");assert.equal(calls,4,'Cache is per user');
+assert.equal((await run('languageServiceStatus()')).ready,false,'No paid language adapter enabled');
+assert.match(run('languageSettings.toString()'),/Google/);
+console.log('Google translation PASS: target languages, cache and account separation, credentials omitted, no paid providers. Endpoint mocked; real network and device speech require on-device checks.');

@@ -4,7 +4,7 @@ const run=code=>vm.runInContext(code,ctx);const assets=new Map();let transcribes
 ctx.mockAsset=async(action,key,value)=>{if(action==='put')assets.set(key,value);if(action==='delete')assets.delete(key);return assets.get(key)};
 ctx.mockTranscribe=async()=>{transcribes++;return 'Please deliver twelve boxes tomorrow.'};
 ctx.mockTranslate=()=>{translations++;return new Promise(resolve=>finishTranslation=resolve)};
-run("localAsset=mockAsset;cloudTranscribe=mockTranscribe;languageTranslate=mockTranslate;commitBusiness=async()=>{};S.view='home';S.me={id:'speaker',role:'sales'};S.token='session-A';DB.d.msg=[{id:'voice-a',by:'speaker',voice:'voice.wav',ch:'C_all',t:1}];DB.ver++;LS.set('speechEngine','cloud');");
+run("localAsset=mockAsset;localSpeechPCM=async()=>new Float32Array([.2,.3]);localSpeechJob=mockTranscribe;languageTranslate=mockTranslate;commitBusiness=async()=>{};S.view='home';S.me={id:'speaker',role:'sales'};S.token='session-A';DB.d.msg=[{id:'voice-a',by:'speaker',voice:'voice.wav',ch:'C_all',t:1}];DB.ver++;LS.set('speechEngine','cloud');");
 ctx.testBlob=new Blob(['audio'],{type:'audio/wav'});
 const first=run("queueVoiceText('voice-a',testBlob)");const second=run("queueVoiceText('voice-a',testBlob)");assert.equal(first,second,'Queued/active clicks use one transcription');await first;
 assert.equal(transcribes,1);assert.equal(run("DB.get('msg','voice-a').text"),'Please deliver twelve boxes tomorrow.');assert.equal(run("DB.get('msg','voice-a').tr"),undefined,'Transcript is visible before translation completes');assert.equal(translations,1);
