@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {ctx,vm} from './ui_v190.mjs';
+const run=s=>vm.runInContext(s,ctx);let starts=[],stops=[],posts=[];let releaseStart;
+ctx.mockNative={startVoice:async o=>{starts.push(o)},stopVoice:async o=>{stops.push(o);return {data:'data:audio/mp4;base64,YXVkaW8='}}};
+ctx.fetch=async()=>({blob:async()=>new Blob(['audio'],{type:'audio/mp4'})});ctx.mockPost=(o,ch)=>posts.push({o,ch});ctx.mockEvent={preventDefault(){},currentTarget:{setPointerCapture(){}},pointerId:1,clientY:100};
+run("S.me={id:'voice-user',role:'sales'};S.chId='voice-chat';S.view='home';nativePerms=async()=>({microphone:'granted'});voiceCaps=async()=>({record:true,live:true});NX=()=>mockNative;upVoice=async()=> 'voice-url';chPost=mockPost;queueVoiceText=()=>{};");
+await run('vStart(mockEvent)');assert.equal(starts.length,1);assert.equal(starts[0].transcribe,false,'Hold recording never opens the failing system recognizer');
+run('VREC.t0=Date.now()-2000');await run('vStop(false)');assert.equal(stops[0].cancel,false);assert.equal(posts.length,1);assert.equal(posts[0].ch,'voice-chat');assert.equal(run('VREC'),null);
+ctx.mockNative.startVoice=()=>new Promise(r=>releaseStart=r);const start=run('vStart(mockEvent)');await new Promise(r=>setImmediate(r));await run('vStop(false)');releaseStart();await start;assert.equal(stops.at(-1).cancel,true,'Release during native start cleans up recorder');assert.equal(posts.length,1);assert.equal(run('VREC'),null);
+ctx.mockNative.startVoice=async()=>{};await run('vTap(mockEvent)');assert.equal(run('VREC.tap'),true);run('VREC.t0=Date.now()-2000');await run('vTap(mockEvent)');assert.equal(posts.length,2,'Tap again finishes and sends recording');
+await run('vStart(mockEvent)');run('VREC.t0=Date.now()-2000;VREC.cancel=true');await run('vStop(false)');assert.equal(posts.length,2,'Slide cancellation never posts');
+for(const x of ['[INAUDIBLE]','(audience laughing)','【听不清】','music','...']){ctx.label=x;assert.equal(run('cleanVoiceTranscript(label)'),'')}
+assert.equal(run("cleanVoiceTranscript('明天送十二箱。')"),'明天送十二箱。');assert.equal(run("cleanVoiceTranscript('Please deliver twelve boxes.')"),'Please deliver twelve boxes.');assert.equal(run("recordingLanguage()"),'chinese');
+run("S.me={id:'leave-user',role:'sales'};DB.d.leave=[];S.chatLeavePublic={user:'leave-user',rows:[{id:'p',by:'PENDING_PERSON',status:'submitted'},{id:'a',by:'DONE_PERSON',status:'approved'},{id:'r',by:'REJECT_PERSON',status:'rejected'}]};DB.d.users=[{id:'PENDING_PERSON',name:'Pending person'},{id:'DONE_PERSON',name:'Done person'},{id:'REJECT_PERSON',name:'Reject person'}];DB.ver++");
+let html=run('chatLeavePanel()');assert.ok(html.includes('Pending person'));assert.ok(!html.includes('Done person'));assert.ok(!html.includes('Reject person'));assert.ok(html.includes('aria-expanded="false"'));
+run('chatLeaveToggleDone()');html=run('chatLeavePanel(true)');assert.ok(html.includes('Done person')&&html.includes('Reject person'));run('chatLeaveToggleDone()');assert.ok(!run('chatLeavePanel()').includes('Done person'));run("S.me={id:'another',role:'sales'}");assert.equal(run("LS.get('chat-leave-done:'+meId(),false)"),false);
+console.log('v1.14.1 PASS: independent native recording, deferred-start cleanup, tap stop, cancellation, non-speech rejection, spoken language, pending-only leave and account-isolated history collapse. Mocked bridge, not a Redmi device test.');
