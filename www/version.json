@@ -1,6 +1,6 @@
 {
-  "version": "1.14.5",
-  "build": 28,
+  "version": "1.14.6",
+  "build": 29,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,12 +10,13 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "移除语音转文字与翻译，保留原声发送、播放及上滑取消",
-      "输入文字正常翻译；语音不再下载或加载识别模型"
+      "消息列表与聊天窗口采用微信式布局、浅绿/白气泡和方形头像",
+      "调整输入栏、图标、语音条比例；修复未读状态大白框",
+      "保留语音原声发送与播放、文字翻译和请假审批"
     ],
     "en": [
-      "Audio-only voice messages; remove voice transcription and translation",
-      "Keep typed-message translation; no speech model loading"
+      "WeChat-style chat list, avatars, bubbles and composer proportions",
+      "Compact audio messages and read status; typed translation retained"
     ]
   }
 }
