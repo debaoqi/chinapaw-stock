@@ -284,7 +284,7 @@ body.web .tnav::-webkit-scrollbar{display:none}
 .box,.wcard,.wtile,.stat,.searchbar{border:1px solid var(--surface-line)}
 .inp{border:1px solid var(--control-line)}
 .inp:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(11,122,75,.10)}
-#cIn{text-align:center;box-sizing:border-box;padding:9.5px 12px!important;line-height:21px}
+#cIn{text-align:center;box-sizing:border-box;padding:10px 12px!important;line-height:20px}
 #cIn::placeholder{text-align:center;opacity:1}
 
 .person-line{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:nowrap}.person-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.person-large{font-size:20px}.person-line>.badge{flex:0 1 auto;min-width:0;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.avatar-edit{border:0;background:transparent;padding:0;flex:none;cursor:pointer;border-radius:50%}.avatar-edit:focus-visible{outline:2px solid var(--green);outline-offset:3px}
