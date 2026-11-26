@@ -7,7 +7,6 @@ V.work=()=>{const cards=[],add=(ok,bg,icon,title,sub,action,count)=>{if(ok)cards
  add(can('stock'),'#9A6030','box',L('期初库存审批','Opening inventory'),L('申请 · 审批 · 入库','Request · approve · receive'),"go('stock_requests')");
  add(true,'#345E83','chart',L('经营控制','Business controls'),' ',"go('business_control')");
  add(['chair','acct'].includes(S.me.role),'#287D61','download',L('Excel批量导入','Excel import'),L('上传表格 · 预览校验','Upload · preview · validate'),"go('import_data')");
- add(true,'#7557A1','mic',L('语音与翻译','Speech & translation'),L('Google翻译 · 设备识别','Google translation · device speech'),"languageSettings()");
  add(vehicleAllowed(),'#A14D53','camera',L('车辆铭牌识别','Vehicle labels'),L('照片识别 · 条码档案','Image OCR · barcode archive'),"go('vehicles')");
  add(RELEASE_FINANCE_ENABLED&&['chair','gm','ops','acct','cashier'].includes(S.me.role),'#47687A','calc',L('资金账户与对账','Money & reconciliation'),'',"go('money_accounts');financeLoad('money_accounts')");
  add(RELEASE_FINANCE_ENABLED&&['chair','gm','ops','acct','cashier'].includes(S.me.role),'#5F597D','doc',L('总账与财务报表','Ledger & statements'),'',"go('ledger');financeLoad()");
