@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.9.1',APP_BUILD=19;
+const APP_VER='1.10.0',APP_BUILD=20;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -134,7 +134,7 @@ const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance','vehicle'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   p(){return this.cloud?'c_':''},
@@ -197,7 +197,7 @@ const Sync={timer:null,
           while(changed){changed=false;DB.outbox.forEach(o=>{const links=[o.id,o.d.ref,o.d.po,o.d.so,o.d.grn].filter(Boolean);if(links.some(id=>bad.has(id)))links.forEach(id=>{if(!bad.has(id)){bad.add(id);changed=true}})})}
           DB.outbox=DB.outbox.filter(o=>!bad.has(o.id));KINDS.forEach(k=>DB.d[k]=DB.d[k].filter(d=>!bad.has(d.id)));DB.seq=0;DB.ver++;
           const p=await rpc('jxc_pull',{p_token:S.token,p_since:0});if(p){const mine=new Set(DB.outbox.map(o=>o.k+o.id));DB.merge((p.rows||[]).filter(r=>!mine.has(r.k+r.d.id)).map(r=>({...r,force:true})));DB.seq=p.seq||0;if(p.users)acceptCloudUsers(p.users)}
-          toast(L('审批状态已变更，相关操作未保存；已恢复云端记录，请重新核对','Approval changed; related changes were not saved. Server records restored; review again'));DB.save();
+          toast(/Photo and customer signature required/.test(S.syncErr)?L('尚未客户签收，已恢复为服务器真实状态；请先拍照签字','Customer receipt missing; server state restored. Take a photo and obtain the signature first'):L('校验未通过，操作未保存；已恢复云端记录，请重新核对','Validation failed; changes were not saved. Server records restored; review again'));DB.save();
         }catch(recovery){console.error(recovery)}
       }else if(force===true)toast(L('同步失败：','Sync failed: ')+S.syncErr)}
     finally{S.syncing=false;window.syncUI&&syncUI();if(force===true&&!S.syncErr)toast(L('已同步','Synced'));
