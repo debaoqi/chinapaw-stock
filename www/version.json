@@ -1,6 +1,6 @@
 {
-  "version": "1.11.0",
-  "build": 21,
+  "version": "1.12.0",
+  "build": 22,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,14 +10,16 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "车辆铭牌改用服务端Gemini图片识别，免费额度不足时停止调用",
-      "换图清空旧车信息，重新识别保留手工修正，可疑字段突出提示",
-      "原图与草稿保留，核对后归档，审批入库流程保持有效"
+      "按钮边框、触控尺寸、表单间距和长文字换行统一调整",
+      "底部滚动空间随导航和固定操作栏实际高度调整，最后一行色块不再遮挡",
+      "OpenAI语音转写与翻译接口、保留原声、先文字后翻译、失败重试和预算保护",
+      "减少聊天重复渲染，限制同时处理任务，修复异步结果和账号切换隔离"
     ],
     "en": [
-      "Server-side Gemini vehicle label recognition; stop when free quota is exhausted",
-      "New photos clear stale fields; AI rechecks preserve manual corrections and flag uncertain fields",
-      "Original image and draft retained; review before archiving and approved intake"
+      "Clear action buttons, touch targets, form spacing and wrapped labels",
+      "Measured bottom navigation clearance keeps the last work tiles visible",
+      "OpenAI speech and translation integration, transcript-first UI, retry and budget protection",
+      "Less chat repainting, bounded processing and account-safe asynchronous results"
     ]
   }
 }
