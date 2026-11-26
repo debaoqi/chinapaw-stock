@@ -1,6 +1,6 @@
 {
-  "version": "1.14.8",
-  "build": 31,
+  "version": "1.14.9",
+  "build": 32,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,14 +10,10 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "统一消息页与其他页面的字体、标题、姓名及导航字重",
-      "移除工作台“语音与翻译”色块及重复入口",
-      "保留输入文字翻译，语音只发送和播放原声"
+      "销售单状态筛选改为两行，完整显示名称与数量"
     ],
     "en": [
-      "Consistent app typography across chat and other pages",
-      "Remove redundant Speech & translation work tile",
-      "Keep typed-message translation and audio-only voice"
+      "Show all sales status filters and counts in two rows"
     ]
   }
 }
