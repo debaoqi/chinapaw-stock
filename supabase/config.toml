@@ -1,2 +1,5 @@
 [functions.jxc-push]
 verify_jwt = true
+
+[functions.jxc-vehicle-ocr]
+verify_jwt = true
