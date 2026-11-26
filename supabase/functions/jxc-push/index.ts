@@ -23,7 +23,16 @@ async function db(path:string,method='GET',body?:unknown) {
   const text=await response.text();return text?JSON.parse(text):null;
 }
 
+const cors={'Access-Control-Allow-Origin':'https://debaoqi.github.io','Access-Control-Allow-Headers':'authorization,apikey,x-jxc-session,content-type','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin'};
+let webPushModule:any;
+async function webPush(){return webPushModule||(webPushModule=(await import('npm:web-push@3.6.7')).default)}
+async function webKeys(){let keys=await db('jxc_web_push_keys?select=public_key,private_key&id=eq.1');if(!keys?.length){const pair=(await webPush()).generateVAPIDKeys();try{await db('jxc_web_push_keys','POST',{id:1,public_key:pair.publicKey,private_key:pair.privateKey})}catch{/* Concurrent initialization: read the winning key. */}keys=await db('jxc_web_push_keys?select=public_key,private_key&id=eq.1')}if(!keys?.length)throw Error('Web push keys unavailable');return keys[0]}
+
 export async function handleRequest(req:Request) {
+  if(req.method==='OPTIONS')return new Response(null,{headers:cors});
+  if(req.method==='GET'&&new URL(req.url).searchParams.get('action')==='web-config'){
+    try{await db('rpc/jxc_web_push_identity','POST',{p_token:req.headers.get('x-jxc-session')||''});const keys=await webKeys();return Response.json({publicKey:keys.public_key},{headers:cors})}catch{return Response.json({error:'Web push not ready or session expired'},{status:503,headers:cors})}
+  }
   if(req.method!=='POST')return new Response('Method not allowed',{status:405});
   const secret=env('PUSH_WEBHOOK_SECRET');
   if(!secret||req.headers.get('x-jxc-push-secret')!==secret)return new Response('Unauthorized',{status:401});
@@ -45,6 +54,14 @@ export async function handleRequest(req:Request) {
           }
         }catch{failed=true}
       }));
+      // Web Push is encrypted for each browser; iOS uses Apple's own push endpoint.
+      try{
+        const subscriptions=await db('jxc_web_push_subscriptions?select=endpoint,user_id,subscription,jxc_users!inner(active)&jxc_users.active=eq.true&user_id=in.'+users+'&expires_at=gt.'+encodeURIComponent(new Date().toISOString()))||[];
+        if(subscriptions.length){const keys=await webKeys(),sender=await webPush();await Promise.all(subscriptions.map(async(device:any)=>{
+          try{await sender.sendNotification(device.subscription,JSON.stringify({userId:device.user_id,eventId:String(event.id),body:event.body}),{TTL:86400,urgency:'high',vapidDetails:{subject:'https://debaoqi.github.io/chinapaw-stock/',publicKey:keys.public_key,privateKey:keys.private_key}})}
+          catch(e){if([404,410].includes((e as any).statusCode))await db('jxc_web_push_subscriptions?endpoint=eq.'+encodeURIComponent(device.endpoint),'DELETE');else failed=true}
+        }))}
+      }catch{failed=true}
       await db('jxc_push_events?id=eq.'+event.id,'PATCH',failed?{last_error:'Transient delivery error; retry queued',leased_until:new Date(Date.now()+30000).toISOString()}:{sent_at:new Date().toISOString(),last_error:null,leased_until:null});
       if(!failed)sent++;
     }
