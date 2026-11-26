@@ -1,6 +1,6 @@
 {
-  "version": "1.14.2",
-  "build": 25,
+  "version": "1.14.3",
+  "build": 26,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,14 +10,12 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "移除点击录音，新语音输入仅生成文字",
-      "先核对文字，再翻译并核对后确认发送；失败不发送",
-      "请假待审批单列，已处理记录可折叠"
+      "按住说话、松开发送语音、上滑取消；按钮文字居中",
+      "语音下方自动转文字和翻译，失败保留原声，可重试或校对"
     ],
     "en": [
-      "Text-only dictation with transcript and translation review",
-      "No new voice messages; translation failures prevent sending",
-      "Separate pending leave and collapsible history"
+      "Hold to record, release to send voice, slide up to cancel",
+      "Automatic transcript and translation under voice messages; originals retained for retry"
     ]
   }
 }
