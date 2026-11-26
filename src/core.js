@@ -134,7 +134,7 @@ const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance','vehicle'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance','vehicle','profile'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   p(){return this.cloud?'c_':''},
