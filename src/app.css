@@ -291,3 +291,27 @@ body.web .tnav::-webkit-scrollbar{display:none}
 .business-controls .control-menu{display:flex;flex-direction:column;gap:14px;padding:6px 0 18px}.control-row{display:flex;align-items:center;gap:12px;width:100%;min-height:78px;padding:15px 14px;border:1px solid var(--surface-line);border-left:6px solid var(--accent);border-radius:20px;background:#fff;text-align:left;box-shadow:0 3px 10px rgba(28,28,30,.035)}.control-icon{display:flex;align-items:center;justify-content:center;color:var(--accent);flex:none}.control-title{flex:1;min-width:0;font-size:18px;font-weight:750;white-space:nowrap;line-height:1.5}.control-row:active{background:var(--soft)}.wtile{min-height:126px}.wtile .b{line-height:1.45}.person-line .badge{line-height:1.35}.person-line .person-large{line-height:1.45}
 
 .vehicle-check{color:#936214;font-size:12px;margin-left:6px}.inp.vehicle-uncertain{border:2px solid #D6A849;background:#FFFDF4}#vehicleProgress{margin:12px 0;line-height:1.7;overflow-wrap:anywhere}
+
+/* Clear action surfaces and breathing room for touch, translated labels and forms. */
+.bigbtn{min-height:52px;height:auto;padding:13px 18px;line-height:1.4;white-space:normal;overflow:visible;text-overflow:clip;text-align:center;border:1.5px solid transparent}
+.bigbtn.ghost{border-color:#98B8A7;background:#fff;color:#17583D;box-shadow:0 2px 4px rgba(15,70,45,.05)}
+.pill.w{border:1px solid #BACCBF}.bigbtn:focus-visible,.pill:focus-visible,[role=button]:focus-visible{outline:3px solid #61A887;outline-offset:3px}
+.bigbtn:disabled,.pill:disabled{cursor:wait;opacity:.55}
+.fld + .bigbtn,.inp + .bigbtn,.bigbtn + .fld{margin-top:16px}
+.bigbtn + .bigbtn{margin-top:12px}.row>.bigbtn + .bigbtn,.action-grid>.bigbtn + .bigbtn{margin-top:0}
+.bigbtn + .xs,.bigbtn + .sm{margin-top:10px;line-height:1.65}.fld>label{line-height:1.5}
+.action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}
+.action-stack{display:grid;gap:12px;margin-top:18px}.action-stack>.bigbtn{width:100%;margin:0}
+.vehicle-intake .fld{margin-top:18px}.vehicle-intake .inp{border-color:#C6D1C8;background:#fff}
+.vehicle-intake h4{font-size:17px;line-height:1.5;margin-bottom:6px}.vehicle-intake .opening-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.vehicle-intake .flow-note{margin-top:12px;line-height:1.7;color:var(--muted);font-size:13px}
+.action-control{border:1px solid #B7CABC!important;border-radius:13px;background:#fff;padding:10px 14px;line-height:1.5;min-height:44px;cursor:pointer}
+.li.action-control{margin:8px 0;padding:12px 14px;gap:12px}.action-control:active{background:#E8F2EA}
+.chat-audio-button{border:1px solid currentColor;border-radius:12px;padding:10px 12px;min-height:44px;width:100%;color:inherit;background:rgba(128,128,128,.08)}
+.voice-status{margin-top:8px;font-size:12px;line-height:1.5}.voice-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.voice-actions .pill{min-height:40px;white-space:normal;line-height:1.4}.language-settings .bigbtn{width:100%}
+@media(max-width:380px){.action-grid{grid-template-columns:1fr}.vehicle-intake .bigbtn{font-size:15px}}
+
+/* A real last child participates in Android WebView scroll height; container padding alone may not. */
+.screen,.screen.nonav{padding-bottom:0;scroll-padding-bottom:calc(var(--bottom-ui-height,84px) + 24px)}
+.scroll-end-space{height:calc(var(--bottom-ui-height,84px) + 28px);min-height:28px;flex:none;clear:both;pointer-events:none}

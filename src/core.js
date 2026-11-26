@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.11.0',APP_BUILD=21;
+const APP_VER='1.12.0',APP_BUILD=22;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -370,7 +370,7 @@ async function login(pw,trust,role,uidSel){pw=String(pw||'').trim();const lk=LS.
   LS.set('lock',{n:0,until:0});LS.set(SK,{me:S.me,token:S.token||null,trust:!!trust,t:Date.now()})}
 function restoreSession(){const s=LS.get(SK,null);if(!s||!s.trust)return false;if(Date.now()-s.t>30*864e5)return false;S.me=s.me;S.token=s.token;
   if(!DB.cloud){const u=DB.get('users',S.me.id);if(!u||u.active===false)return false;S.me={...u};delete S.me.pw}return true}
-function logout(){const session=S.token;if(DB.cloud&&session){const drop=window.revokePushRegistration?revokePushRegistration(session):Promise.resolve();drop.finally(()=>rpc('jxc_logout',{p_token:session}).catch(()=>{}))}LS.del(SK);S.me=null;S.token=null;if(window.updateUnreadBadge)updateUnreadBadge(true)}
+function logout(){if(window.resetLanguageSession)resetLanguageSession();const session=S.token;if(DB.cloud&&session){const drop=window.revokePushRegistration?revokePushRegistration(session):Promise.resolve();drop.finally(()=>rpc('jxc_logout',{p_token:session}).catch(()=>{}))}LS.del(SK);S.me=null;S.token=null;if(window.updateUnreadBadge)updateUnreadBadge(true)}
 async function changePw(old,nw){if(DB.cloud){await rpc('jxc_change_pw',{p_token:S.token,p_old:old,p_new:nw});return}
   const u=DB.get('users',S.me.id);if(u.pw!==await pwHash(u.id,old))throw new Error(L('原密码不正确','Current password is wrong'));
   if(String(nw).length<6)throw new Error(L('新密码至少 6 位','At least 6 characters'));DB.put('users',{...u,pw:await pwHash(u.id,nw)})}
