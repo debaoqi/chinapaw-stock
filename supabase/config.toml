@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.jxc-vehicle-ocr]
 verify_jwt = true
+
+[functions.jxc-language]
+verify_jwt = true
