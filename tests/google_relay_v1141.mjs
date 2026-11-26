@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+let handler,authOK=true,calls=[];globalThis.Deno={serve:fn=>handler=fn,env:{get:k=>k==='SUPABASE_URL'?'https://project.supabase.co':'server-only-key'}};
+globalThis.fetch=async(url,opts)=>{calls.push(url);assert.ok(!/openai|azure/.test(url));if(url.includes('/rpc/'))return {ok:authOK};return {ok:true,json:async()=>[[['明天送十二箱。']],null,'en']}};
+await import('../supabase/functions/jxc-language/index.ts');
+const post=(body,token='test-session',origin='https://debaoqi.github.io')=>new Request('https://edge.test',{method:'POST',headers:{origin,'content-type':'application/json',...(token?{'x-jxc-session':token}:{})},body:JSON.stringify(body)});
+assert.equal((await handler(post({action:'translate',text:'Hello',target:'zh-CN'},''))).status,401);
+assert.equal((await handler(post({action:'translate',text:'Hello',target:'zh-CN'},'x','https://untrusted.test'))).status,403);
+assert.equal((await handler(post({action:'transcribe'}))).status,410);assert.equal(calls.length,0,'No audio or unauthenticated request reaches Google');
+authOK=false;assert.equal((await handler(post({action:'translate',text:'Hello',target:'zh-CN'}))).status,401);assert.equal(calls.filter(x=>x.includes('google')).length,0);
+authOK=true;let response=await handler(post({action:'translate',text:'Deliver twelve boxes tomorrow.',target:'zh-CN'}));assert.equal(response.status,200);assert.equal((await response.json()).out,'明天送十二箱。');assert.equal(response.headers.get('access-control-allow-origin'),'https://debaoqi.github.io');
+assert.equal((await handler(post({action:'translate',text:'x'.repeat(2001),target:'zh-CN'}))).status,400);
+assert.equal((await handler(new Request('https://edge.test'))).status,200);assert.equal((await handler(new Request('https://edge.test',{method:'POST',headers:{'x-jxc-session':'x'},body:'x'.repeat(14001)}))).status,413);
+console.log('Google relay PASS: session validation, origin restriction, bounded text, audio rejection, Google-only upstream and translation result. Upstream mocked.');
