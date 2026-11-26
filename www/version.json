@@ -1,6 +1,6 @@
 {
-  "version": "1.14.4",
-  "build": 27,
+  "version": "1.14.5",
+  "build": 28,
   "date": "2026-11-26",
   "force": false,
   "minNative": 9,
@@ -10,14 +10,12 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "转写与云端同步分离，避免下一条语音等待同步",
-      "提前准备模型，显示模型加载、排队和识别状态；拦截重复乱码",
-      "识别语言随语音保存，降低重试语言错配；输入消息文字居中"
+      "移除语音转文字与翻译，保留原声发送、播放及上滑取消",
+      "输入文字正常翻译；语音不再下载或加载识别模型"
     ],
     "en": [
-      "Separate transcription queue from network synchronization",
-      "Prepare the model earlier, show progress and reject repetitive output",
-      "Keep spoken language with voice messages; center message input"
+      "Audio-only voice messages; remove voice transcription and translation",
+      "Keep typed-message translation; no speech model loading"
     ]
   }
 }
