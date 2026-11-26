@@ -410,3 +410,6 @@ body.chat-room-ui .chatbar #cMic>.i{border:1.6px solid currentColor;border-radiu
 .chat-search label>.i{position:absolute;left:calc(50% - 39px);pointer-events:none}
 .chat-search label:focus-within>.i{left:12px}
 .chat-search input:focus{padding-left:22px}
+/* The screen owns scrolling; focusing the fixed composer must not scroll the app shell. */
+body.chat-ui{position:fixed;inset:0;min-height:0;overflow:hidden}
+body.chat-ui .phone{overflow:hidden;overflow:clip}
