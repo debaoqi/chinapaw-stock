@@ -104,4 +104,16 @@ await put('sales','profile',{id:'sales',userId:'sales',by:'sales',emoji:'🐼',p
 await reject(()=>put('outsider','profile',{id:'sales',userId:'sales',by:'sales',emoji:'X',photo:''}));
 assert.equal((await get('sales')).emoji,'🐼');
 console.log('Avatar PASS: own profile changes only; other accounts cannot overwrite.');
+await pg.exec(readFileSync(new URL('../supabase/migrations/v1.11.0_vehicle_ai.sql',import.meta.url),'utf8'));
+const reserve=async(token,id,hash='a'.repeat(64),force=false)=>(await pg.query('select jxc_vehicle_ai_reserve($1,$2,$3,$4) r',[token,hash,id,force])).rows[0].r;
+await reject(()=>reserve('sales','scan-denied-0001'));
+const first=await reserve('keeper','scan-test-0001');assert.equal(first.userId,'keeper');
+assert.equal((await reserve('keeper','scan-test-0002')).busy,true);
+await pg.query('select jxc_vehicle_ai_finish($1,$2,$3::jsonb,true)',['scan-test-0001','keeper',JSON.stringify({fields:{vin:'TESTVIN1234567890'}})]);
+assert.equal((await reserve('keeper','scan-test-0002')).cached,true);
+assert.equal((await reserve('clerk','scan-other-0001')).cached,undefined,'no cross-account result reuse');
+await reject(()=>reserve('clerk','scan-test-0001'));
+assert.equal((await pg.query("select has_table_privilege('anon','jxc_vehicle_ai_requests','select') v")).rows[0].v,false);
+assert.equal((await pg.query("select has_function_privilege('anon','jxc_vehicle_ai_reserve(text,text,text,boolean)','execute') v")).rows[0].v,false);
+console.log('Vehicle AI SQL PASS: permitted roles only, serialized budgets, pending-request protection, private per-user cache and server-only RPC.');
 await pg.close();
