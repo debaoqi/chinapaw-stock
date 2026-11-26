@@ -16,7 +16,7 @@ create or replace function jxc_flow_ok(p_me jxc_users,p_k text,p_d jsonb,p_has b
 declare photo text:=coalesce(p_d->>'photo','');
 begin
  if p_k<>'profile' then return jxc_flow_ok_v110_profile_base(p_me,p_k,p_d,p_has,p_od);end if;
- if p_d->>'id'<>p_me.id or p_d->>'userId'<>p_me.id or p_d->>'by'<>p_me.id then return false;end if;
+ if p_d->>'id' is distinct from p_me.id or p_d->>'userId' is distinct from p_me.id or p_d->>'by' is distinct from p_me.id then return false;end if;
  if (p_d-array['id','userId','by','t','u','_q','photo','emoji'])<>'{}'::jsonb or length(photo)>180000 or length(coalesce(p_d->>'emoji',''))>24 then return false;end if;
  if photo<>'' and photo !~ '^data:image/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$' and photo not like 'https://vctokfjzgjtvsqftadeh.supabase.co/storage/v1/object/public/media/%' then return false;end if;
  return not p_has or p_od->>'userId'=p_me.id;

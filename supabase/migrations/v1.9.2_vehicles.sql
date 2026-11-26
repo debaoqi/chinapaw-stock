@@ -16,12 +16,12 @@ create or replace function jxc_flow_ok(p_me jxc_users,p_k text,p_d jsonb,p_has b
 declare field text;
 begin
  if p_k<>'vehicle' then return jxc_flow_ok_v192_base(p_me,p_k,p_d,p_has,p_od);end if;
- if p_me.role not in ('chair','gm','ops','buyer','clerk','keeper') or p_d->>'by'<>p_me.id or p_d->>'status'<>'saved' then return false;end if;
+ if p_me.role not in ('chair','gm','ops','buyer','clerk','keeper') or p_d->>'by' is distinct from p_me.id or p_d->>'status'<>'saved' then return false;end if;
  if p_has and (p_od-array['u','_q']) is distinct from (p_d-array['u','_q']) then return false;end if;
  foreach field in array array['model','vin','motor','configuration','color','date','vehicleCode','photo'] loop
   if nullif(btrim(p_d->>field),'') is null or length(p_d->>field)>(case when field='photo' then 1800000 else 500 end) then return false;end if;
  end loop;
- if p_d->>'vin' !~ '^[A-Z0-9]{17}$' or p_d->>'motor' !~ '^[A-Z0-9-]{3,64}$' or p_d->>'vehicleCode' !~ '^[A-Z0-9-]{3,64}$' or p_d->>'date' !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' or p_d->>'reviewedBy'<>p_me.id then return false;end if;
+ if p_d->>'vin' !~ '^[A-Z0-9]{17}$' or p_d->>'motor' !~ '^[A-Z0-9-]{3,64}$' or p_d->>'vehicleCode' !~ '^[A-Z0-9-]{3,64}$' or p_d->>'date' !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' or p_d->>'reviewedBy' is distinct from p_me.id then return false;end if;
  perform (p_d->>'date')::date;
  return true;
 end $$;
@@ -35,7 +35,7 @@ begin
  if vehicle is null or vehicle->>'status'<>'saved' then raise exception 'Reviewed vehicle archive required';end if;
  if jsonb_array_length(new.d->'items')<>1 then raise exception 'One vehicle per intake document';end if;
  item:=new.d->'items'->0;
- if (item->>'qty')::numeric<>1 or item->>'batch'<>vehicle->>'vin' then raise exception 'Vehicle quantity or batch does not match archive';end if;
+ if (item->>'qty')::numeric<>1 or item->>'batch' is distinct from vehicle->>'vin' then raise exception 'Vehicle quantity or batch does not match archive';end if;
  if nullif(vehicle->>'productId','') is not null and item->>'pid'<>vehicle->>'productId' then raise exception 'Vehicle product does not match archive';end if;
  if exists(select 1 from jxc_docs where k in ('grn','stockreq') and id<>new.id and d->>'vehicleId'=vid and d->>'status'<>'rejected') then raise exception 'Vehicle already has an intake request';end if;
  return new;
