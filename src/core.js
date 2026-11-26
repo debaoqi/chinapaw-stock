@@ -1,7 +1,7 @@
 /* ================= 华宝进销存 · ChinaPaw Stock — 核心（用户端与管理后台共用） =================
    结构与 ChinaPaw 一致：单文件网页应用 + version.json 热更新 + 可选 Supabase 云端（只通过 RPC 读写）。
    未配置云端时以“本机演示模式”运行（数据存于本机 localStorage），配置后自动切换为多人实时同步。 */
-const APP_VER='1.12.0',APP_BUILD=22;
+const APP_VER='1.14.0',APP_BUILD=23;
 const CFG=window.JXC_CONFIG||{};
 let SK=window.JXC_SESS||'sess';/* 用户端与管理后台各自保存登录状态 */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -106,7 +106,7 @@ const ROLES={
    so_fin 销售单财务审核（确认收款 / 赊账初审）· tk_fin 盘点财务复核 · tk_final 盘点终审（运营经理 / 总经理）
    exp_approve 特殊费用审批（总经理 / 运营经理）· exp_book 费用入账（会计）· 付费用由出纳（fin_pay） */
 ROLES.sales.p.push('att_view');['buyer','sales','keeper','acct','cashier'].forEach(r=>{if(!ROLES[r].p.includes('att'))ROLES[r].p.push('att')});ROLES.acct.p.push('so_fin','tk_fin','exp_book');
-ROLES.ops.p.push('fin_approve_ops');ROLES.buyer.p.push('po_prepare','docs_view');ROLES.keeper.p.push('po_prepare');ROLES.acct.p.push('grn_fin','docs_view');ROLES.cashier.p.push('so_fin','docs_view');
+ROLES.ops.p.push('fin_approve_ops');ROLES.buyer.p.push('po_prepare','docs_view');ROLES.keeper.p.push('po_prepare');ROLES.acct.p.push('grn_fin','docs_view');ROLES.cashier.p.push('docs_view');
 ROLES.ops.p.push('att');
 const ROLE_ORDER=['chair','gm','ops','buyer','sales','field','keeper','acct','cashier','clerk'];
 function can(p,u){u=u||S.me;if(p==='att')return !!u&&!!ROLES[u.role]&&u.role!=='chair';if(p==='mgmt')return !!u&&(['chair','gm'].includes(u.role)||u.admin===true);if(p==='_exps')return can('exp_approve',u)||own('exp_book',u)||own('fin_pay',u);if(p==='_pt')return can('mgmt',u)||can('po',u)||can('so',u);if(p==='_recv')return can('po_prepare',u)||can('po_recv',u);if(p==='_docs')return can('po',u)||can('so',u)||can('po_recv',u)||can('so_ship',u)||can('take',u)||can('docs_view',u)||can('so_fin',u);if(!u)return false;const r=ROLES[u.role];if(!r)return false;return r.p==='*'||r.p.includes(p)}
@@ -134,7 +134,7 @@ const activeWh=()=>allWh().slice(0,plan().limit);
 const whActive=id=>activeWh().some(w=>w.id===id);
 
 /* ================= 数据层：本机数据库 + 待提交队列（离线可用） + 云端同步 ================= */
-const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance','vehicle','profile'];
+const KINDS=['settings','wh','products','partners','moves','po','grn','pr','so','sr','counts','ships','svc','fin','users','chat','msg','att','exp','read','leave','stockreq','transfer','receipt','account','reconcile','period','quote','serial','adjust','opening_balance','vehicle','profile','writeoff','qc','invoice','allocation','refund','lcadj','fxrate','credit_note'];
 const DB={
   d:{},outbox:[],seq:0,lastSync:0,ver:0,cloud:!!(CFG.supabaseUrl&&CFG.supabaseAnonKey),
   p(){return this.cloud?'c_':''},
@@ -145,7 +145,7 @@ const DB={
   all(k){return (this.d[k]||[]).filter(x=>!x.del)},
   get(k,id){return (this.d[k]||[]).find(x=>x.id===id)},
   /* 写入一条记录：本机立即生效，进入待提交队列；联网后自动提交到云端 */
-  put(k,doc,opt={}){doc={...doc};delete doc.paidVerified;if(!doc.id)doc.id=uid(k.slice(0,2));doc.u=Date.now();doc.by=doc.by||(S.me&&S.me.id)||'';
+  put(k,doc,opt={}){doc={...doc};delete doc.paidVerified;if(!doc.id)doc.id=uid(k.slice(0,2));doc.u=Math.max(Date.now(),(+doc.u||0)+1,(+this.get(k,doc.id)?.u||0)+1);doc.by=doc.by||(S.me&&S.me.id)||'';
     const a=this.d[k]||(this.d[k]=[]);const i=a.findIndex(x=>x.id===doc.id);if(i>=0)a[i]=doc;else a.push(doc);
     if(!opt.local){this.outbox.push({k,id:doc.id,d:doc});doc._q=1}
     this.ver++;this.save();if(!opt.quiet){bc('chg',[{k,d:doc}]);setTimeout(()=>Sync.run(),50)}return doc},
@@ -216,7 +216,7 @@ const Sync={timer:null,
 /* ---------- 库存引擎：库存 = 全部出入库流水之和（离线、多人同时操作都不会算错） ---------- */
 let _sm=null,_smv=-1;
 function stockMap(){if(_smv===DB.ver&&_sm)return _sm;const m={};
-  DB.all('moves').forEach(v=>{const p=m[v.pid]||(m[v.pid]={q:0,w:{}});p.q+=v.qty;const w=p.w[v.wh]||(p.w[v.wh]={q:0,b:{}});w.q+=v.qty;
+  DB.all('moves').filter(v=>v.quality!=='hold').forEach(v=>{const p=m[v.pid]||(m[v.pid]={q:0,w:{}});p.q+=v.qty;const w=p.w[v.wh]||(p.w[v.wh]={q:0,b:{}});w.q+=v.qty;
     const bk=v.batch||'-';const b=w.b[bk]||(w.b[bk]={q:0,exp:v.exp||'',batch:v.batch||''});b.q+=v.qty;if(v.exp&&!b.exp)b.exp=v.exp});
   _sm=m;_smv=DB.ver;return m}
 const qtyOf=(pid,wh)=>{const p=stockMap()[pid];if(!p)return 0;return wh?((p.w[wh]||{}).q||0):p.q};

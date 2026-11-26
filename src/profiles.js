@@ -4,11 +4,10 @@ function avatarUpload(){const i=document.createElement('input');i.type='file';i.
 async function avatarSave(value){if(S.avatarSaving)return;S.avatarSaving=true;try{const old=DB.get('profile',meId())||{};DB.put('profile',{...old,...value,id:meId(),userId:meId(),by:meId(),t:old.t||Date.now()});await commitBusiness([meId()]);closeSheet(true);render(false);toast(L('头像已保存并同步','Avatar saved and synced'),false)}catch(e){toast(L('头像尚未同步，请检查网络：','Avatar not synced; check your network: ')+String(e.message||e))}finally{S.avatarSaving=false}}
 /* Keep every work entry in the same colored grid, including operational extensions. */
 V.work=()=>{const cards=[],add=(ok,bg,icon,title,sub,action,count)=>{if(ok)cards.push(`<div class="wtile" style="background:${bg};position:relative" onclick="${action}"><div class="wti">${ic(icon)}</div><div style="min-width:0"><div class="b">${title}</div>${sub?`<div class="wsub">${sub}</div>`:''}</div>${count?`<span class="badge b-red" style="position:absolute;top:10px;right:10px">${count}</span>`:''}</div>`)};
- add(true,'#527047','clock',L('请假与审批','Leave & approvals'),L('申请 · 待办 · 审批结果','Request · review · results'),"go('leave')",DB.all('leave').filter(leaveCan).length);
  add(can('stock'),'#9A6030','box',L('期初库存审批','Opening inventory'),L('申请 · 审批 · 入库','Request · approve · receive'),"go('stock_requests')");
  add(true,'#345E83','chart',L('经营控制','Business controls'),' ',"go('business_control')");
  add(['chair','acct'].includes(S.me.role),'#287D61','download',L('Excel批量导入','Excel import'),L('上传表格 · 预览校验','Upload · preview · validate'),"go('import_data')");
- add(true,'#7557A1','mic',L('语音与翻译','Speech & translation'),L('云端识别 · 语言设置','Cloud speech · language'),"languageSettings()");
+ add(true,'#7557A1','mic',L('语音与翻译','Speech & translation'),L('Google翻译 · 设备识别','Google translation · device speech'),"languageSettings()");
  add(vehicleAllowed(),'#A14D53','camera',L('车辆铭牌识别','Vehicle labels'),L('照片识别 · 条码档案','Image OCR · barcode archive'),"go('vehicles')");
  add(RELEASE_FINANCE_ENABLED&&['chair','gm','ops','acct','cashier'].includes(S.me.role),'#47687A','calc',L('资金账户与对账','Money & reconciliation'),'',"go('money_accounts');financeLoad('money_accounts')");
  add(RELEASE_FINANCE_ENABLED&&['chair','gm','ops','acct','cashier'].includes(S.me.role),'#5F597D','doc',L('总账与财务报表','Ledger & statements'),'',"go('ledger');financeLoad()");
