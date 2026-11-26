@@ -9,7 +9,7 @@ import re, pathlib, base64
 # 自检：三个源文件里不能有重名的全局变量 / 函数（否则整个页面无法运行）
 import re as _re,collections as _co
 _n=_co.Counter()
-for _f in ['src/i18n.js','src/core.js','src/app.js','src/enterprise.js','src/imports.js']:
+for _f in ['src/i18n.js','src/core.js','src/app.js','src/enterprise.js','src/imports.js','src/webpush.js','src/local_speech.js','src/vehicles.js','src/profiles.js']:
     for _m in _re.finditer(r'^(?:const|let|var|function|async function)\s+([A-Za-z_$][\w$]*)',open(_f,encoding='utf-8').read(),_re.M):_n[_m.group(1)]+=1
 _d=[k for k,v in _n.items() if v>1]
 if _d: raise SystemExit('重名的全局定义 / duplicate globals: '+', '.join(_d))
@@ -17,7 +17,7 @@ R = pathlib.Path(__file__).parent
 css = (R/'src/app.css').read_text(encoding='utf-8')
 core = (R/'src/core.js').read_text(encoding='utf-8').replace('/*I18N*/', (R/'src/i18n.js').read_text(encoding='utf-8'))
 app = (R/'src/app.js').read_text(encoding='utf-8')
-app = app.replace('/* ================= 启动 ================= */', (R/'src/enterprise.js').read_text(encoding='utf-8')+'\n'+(R/'src/imports.js').read_text(encoding='utf-8')+'\n/* ================= 启动 ================= */')
+app = app.replace('/* ================= 启动 ================= */', (R/'src/enterprise.js').read_text(encoding='utf-8')+'\n'+(R/'src/imports.js').read_text(encoding='utf-8')+'\n'+(R/'src/webpush.js').read_text(encoding='utf-8')+'\n'+(R/'src/local_speech.js').read_text(encoding='utf-8')+'\n'+(R/'src/vehicles.js').read_text(encoding='utf-8')+'\n'+(R/'src/profiles.js').read_text(encoding='utf-8')+'\n/* ================= 启动 ================= */')
 # 预先收集全部界面英文句子：切换到其他语言时一次翻译完，避免先英文后外文的闪动
 en = set()
 for src in (core, app):
