@@ -23,6 +23,8 @@ import java.nio.ByteOrder;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
+import android.speech.tts.UtteranceProgressListener;
+import android.view.HapticFeedbackConstants;
 import android.net.ConnectivityManager;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
@@ -95,12 +97,17 @@ public class JxcNativePlugin extends Plugin {
     private File voiceFile;
     private long voiceStarted;
     private TextToSpeech speech;
-    private boolean speechReady;
+    private boolean speechReady, speechInitializing;
+    private PluginCall speechWarmPending;
+    private volatile String speechUtterance;
+    private volatile int speechOffset;
+    private int speechBaseOffset;
+    private String speechVoiceKey = "";
     private PluginCall speechPending;
 
     @PluginMethod
     public void voiceCapabilities(PluginCall call) {
-        JSObject o = new JSObject(); o.put("live", Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isRecognitionAvailable(getContext())); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("naturalSpeech", true); o.put("openFile", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
+        JSObject o = new JSObject(); o.put("live", Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isRecognitionAvailable(getContext())); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("naturalSpeech", true); o.put("speechControls", true); o.put("openFile", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
     }
 
     @PluginMethod
@@ -232,29 +239,56 @@ public class JxcNativePlugin extends Plugin {
         o.put("text", texts == null || texts.isEmpty() ? "" : texts.get(0)); call.resolve(o);
     }
 
-    @PluginMethod
-    public void speak(PluginCall call) {
-        getActivity().runOnUiThread(() -> {
-            if (speechReady && speech != null) { speakNow(call); return; }
-            if (speechPending != null) { call.reject("语音引擎正在启动，请稍后重试"); return; }
-            speechPending = call;
-            if (speech != null) speech.shutdown();
-            speech = new TextToSpeech(getContext(), status -> getActivity().runOnUiThread(() -> {
-                PluginCall pending = speechPending; speechPending = null;
-                speechReady = status == TextToSpeech.SUCCESS;
-                if (pending == null) return;
-                if (speechReady) speakNow(pending); else pending.reject("语音引擎不可用，请检查系统文字转语音设置");
-            }));
-        });
+    private void speechEvent(String id, String state) {
+        if (id == null || !id.equals(speechUtterance)) return;
+        JSObject event=new JSObject();event.put("id",id);event.put("state",state);event.put("offset",speechOffset);
+        notifyListeners("speechState",event);
+        if (state.equals("done") || state.equals("error")) speechUtterance=null;
     }
-
-    private void speakNow(PluginCall call) {
-        int language = speech.setLanguage(Locale.forLanguageTag(call.getString("lang", "zh-CN")));
-        if (language < 0) { call.reject("缺少此语言的语音包，请在系统文字转语音设置中下载"); return; }
-        Locale wanted = Locale.forLanguageTag(call.getString("lang", "zh-CN"));
-        Voice chosen = null; int bestScore = Integer.MIN_VALUE;
+    private void startSpeechEngine() {
+        if (speechInitializing) return;
+        speechInitializing=true;
+        speech=new TextToSpeech(getContext(),status->getActivity().runOnUiThread(()->{
+            speechInitializing=false;speechReady=status==TextToSpeech.SUCCESS;
+            if(speechReady) speech.setOnUtteranceProgressListener(new UtteranceProgressListener(){
+                @Override public void onStart(String id){speechEvent(id,"playing");}
+                @Override public void onDone(String id){speechEvent(id,"done");}
+                @Override public void onError(String id){speechEvent(id,"error");}
+                @Override public void onRangeStart(String id,int start,int end,int frame){if(id.equals(speechUtterance))speechOffset=speechBaseOffset+start;}
+            });
+            PluginCall warm=speechWarmPending;speechWarmPending=null;
+            if(warm!=null){if(speechReady){if(configureSpeech(warm))warm.resolve();}else warm.reject("语音引擎不可用");}
+            PluginCall pending=speechPending;speechPending=null;
+            if(pending!=null){if(speechReady)speakNow(pending);else pending.reject("语音引擎不可用，请检查系统文字转语音设置");}
+        }));
+    }
+    @PluginMethod public void prepareSpeech(PluginCall call){getActivity().runOnUiThread(()->{
+        if(speechReady&&speech!=null){if(configureSpeech(call))call.resolve();return;}
+        if(speechWarmPending!=null){call.resolve();return;}
+        speechWarmPending=call;startSpeechEngine();
+    });}
+    @PluginMethod public void speak(PluginCall call){getActivity().runOnUiThread(()->{
+        if(speechReady&&speech!=null){speakNow(call);return;}
+        if(speechPending!=null){JSObject cancelled=new JSObject();cancelled.put("cancelled",true);speechPending.resolve(cancelled);}
+        speechPending=call;startSpeechEngine();
+    });}
+    @PluginMethod public void stopSpeak(PluginCall call){getActivity().runOnUiThread(()->{
+        int offset=speechOffset;speechUtterance=null;
+        if(speechPending!=null){JSObject cancelled=new JSObject();cancelled.put("cancelled",true);speechPending.resolve(cancelled);speechPending=null;}
+        if(speech!=null)speech.stop();JSObject out=new JSObject();out.put("offset",offset);call.resolve(out);
+    });}
+    @PluginMethod public void speechFeedback(PluginCall call){getActivity().runOnUiThread(()->{
+        getActivity().getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);call.resolve();
+    });}
+    private boolean configureSpeech(PluginCall call) {
         boolean online = false;
         try { ConnectivityManager cm = (ConnectivityManager)getContext().getSystemService(Context.CONNECTIVITY_SERVICE); online = cm != null && cm.getActiveNetwork() != null; } catch (Exception ignored) { }
+        String key=call.getString("lang","zh-CN")+":"+online;
+        if (!key.equals(speechVoiceKey)) {
+        int language = speech.setLanguage(Locale.forLanguageTag(call.getString("lang", "zh-CN")));
+        if (language < 0) { call.reject("缺少此语言的语音包，请在系统文字转语音设置中下载"); return false; }
+        Locale wanted = Locale.forLanguageTag(call.getString("lang", "zh-CN"));
+        Voice chosen = null; int bestScore = Integer.MIN_VALUE;
         try { if (speech.getVoices() != null) for (Voice v : speech.getVoices()) {
             if (!v.getLocale().getLanguage().equals(wanted.getLanguage()) || (v.isNetworkConnectionRequired() && !online) || v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
             int score = v.getQuality() * 10 + (v.getLocale().equals(wanted) ? 40 : 0) - v.getLatency();
@@ -262,10 +296,18 @@ public class JxcNativePlugin extends Plugin {
             if (name.contains("neural") || name.contains("natural") || name.contains("premium")) score += 1000;
             if (score > bestScore) { chosen = v; bestScore = score; }
         } if (chosen != null) speech.setVoice(chosen); } catch (Exception ignored) { }
+        speechVoiceKey=key;
+        }
         Double rate = call.getDouble("rate", 0.8);
         speech.setSpeechRate((float)Math.max(0.6, Math.min(1.0, rate)));
         speech.setPitch(1.0f);
-        if (speech.speak(call.getString("text", ""), TextToSpeech.QUEUE_FLUSH, null, "jxc-" + System.nanoTime()) == TextToSpeech.ERROR) call.reject("朗读失败");
+        return true;
+    }
+    private void speakNow(PluginCall call) {
+        if(!configureSpeech(call))return;
+        String id=call.getString("id","jxc-"+System.nanoTime());speechUtterance=id;
+        speechBaseOffset=call.getInt("offset",0);speechOffset=speechBaseOffset;
+        if(speech.speak(call.getString("text",""),TextToSpeech.QUEUE_FLUSH,null,id)==TextToSpeech.ERROR){speechEvent(id,"error");call.reject("朗读失败");}
         else call.resolve();
     }
 
