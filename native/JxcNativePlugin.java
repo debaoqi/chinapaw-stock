@@ -22,6 +22,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
+import android.net.ConnectivityManager;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.annotation.ActivityCallback;
@@ -98,7 +100,7 @@ public class JxcNativePlugin extends Plugin {
 
     @PluginMethod
     public void voiceCapabilities(PluginCall call) {
-        JSObject o = new JSObject(); o.put("live", Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isRecognitionAvailable(getContext())); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
+        JSObject o = new JSObject(); o.put("live", Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isRecognitionAvailable(getContext())); o.put("record", true); o.put("recognize", true); o.put("speak", true); o.put("naturalSpeech", true); o.put("openFile", true); o.put("camera", true); o.put("notifications", true); o.put("push", true); call.resolve(o);
     }
 
     @PluginMethod
@@ -249,8 +251,52 @@ public class JxcNativePlugin extends Plugin {
     private void speakNow(PluginCall call) {
         int language = speech.setLanguage(Locale.forLanguageTag(call.getString("lang", "zh-CN")));
         if (language < 0) { call.reject("缺少此语言的语音包，请在系统文字转语音设置中下载"); return; }
+        Locale wanted = Locale.forLanguageTag(call.getString("lang", "zh-CN"));
+        Voice chosen = null; int bestScore = Integer.MIN_VALUE;
+        boolean online = false;
+        try { ConnectivityManager cm = (ConnectivityManager)getContext().getSystemService(Context.CONNECTIVITY_SERVICE); online = cm != null && cm.getActiveNetwork() != null; } catch (Exception ignored) { }
+        try { if (speech.getVoices() != null) for (Voice v : speech.getVoices()) {
+            if (!v.getLocale().getLanguage().equals(wanted.getLanguage()) || (v.isNetworkConnectionRequired() && !online) || v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
+            int score = v.getQuality() * 10 + (v.getLocale().equals(wanted) ? 40 : 0) - v.getLatency();
+            String name = v.getName().toLowerCase(Locale.ROOT);
+            if (name.contains("neural") || name.contains("natural") || name.contains("premium")) score += 1000;
+            if (score > bestScore) { chosen = v; bestScore = score; }
+        } if (chosen != null) speech.setVoice(chosen); } catch (Exception ignored) { }
+        Double rate = call.getDouble("rate", 0.8);
+        speech.setSpeechRate((float)Math.max(0.6, Math.min(1.0, rate)));
+        speech.setPitch(1.0f);
         if (speech.speak(call.getString("text", ""), TextToSpeech.QUEUE_FLUSH, null, "jxc-" + System.nanoTime()) == TextToSpeech.ERROR) call.reject("朗读失败");
         else call.resolve();
+    }
+
+    @PluginMethod
+    public void openFile(final PluginCall call) {
+        final String encoded = call.getString("data", ""), suppliedName = call.getString("name", "file");
+        if (encoded.length() > 14500000) { call.reject("文件超过10MB"); return; }
+        new Thread(() -> {
+            try {
+                byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+                if (bytes.length == 0 || bytes.length > 10485760) throw new IllegalArgumentException("文件为空或超过10MB");
+                String name = suppliedName.replaceAll("[\\\\/\\p{Cntrl}]", "_");
+                if (name.length() > 180) name = name.substring(name.length()-180);
+                File root = new File(getContext().getCacheDir(), "chat-files"); root.mkdirs();
+                File[] previous = root.listFiles();
+                if (previous != null) for (File dir : previous) if (System.currentTimeMillis()-dir.lastModified() > 86400000L) { File[] contents=dir.listFiles(); if(contents!=null)for(File f:contents)f.delete();dir.delete(); }
+                File folder = new File(root, java.util.UUID.randomUUID().toString()); folder.mkdirs();
+                File target = new File(folder, name);
+                if (!target.getCanonicalPath().startsWith(folder.getCanonicalPath()+File.separator)) throw new SecurityException("Invalid file name");
+                try (FileOutputStream out = new FileOutputStream(target)) { out.write(bytes); }
+                final Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName()+".fileprovider", target);
+                String mime = call.getString("type", "application/octet-stream");
+                if (mime.equals("application/octet-stream")) { String guessed=java.net.URLConnection.guessContentTypeFromName(name);if(guessed!=null)mime=guessed; }
+                final String type=mime;
+                getActivity().runOnUiThread(() -> { try {
+                    Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(uri,type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    Intent chooser = Intent.createChooser(view, "选择应用打开");
+                    getActivity().startActivity(chooser); call.resolve();
+                } catch(Exception e) { call.reject("没有可打开此文件的应用，请先安装相应软件",e); } });
+            } catch (Exception e) { call.reject("文件打开失败",e); }
+        }, "jxc-file-open").start();
     }
 
     @Override
@@ -409,7 +455,8 @@ public class JxcNativePlugin extends Plugin {
         try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception e) { }
         try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception e) { }
         if (!gps && !net) { call.reject("位置信息开关已关闭", "OFF"); return; }
-        final int timeout = call.getInt("timeout", 20000);
+        final boolean quick = call.getBoolean("quick", false);
+        final int timeout = Math.max(1000, Math.min(20000, call.getInt("timeout", 20000)));
         final Handler h = new Handler(Looper.getMainLooper());
         final boolean[] done = { false };
         final List<LocationListener> ls = new ArrayList<>();
@@ -421,7 +468,7 @@ public class JxcNativePlugin extends Plugin {
                 if (l != null && (best[0] == null || l.getTime() > best[0].getTime())) best[0] = l;
             }
         } catch (SecurityException e) { call.reject("定位权限未允许", "DENIED"); return; }
-        if (best[0] != null && System.currentTimeMillis() - best[0].getTime() < 120000 && best[0].getAccuracy() < 100) { call.resolve(locObj(best[0])); return; }
+        if (best[0] != null && System.currentTimeMillis() - best[0].getTime() < 120000 && best[0].getAccuracy() < (quick ? 1000 : 100)) { call.resolve(locObj(best[0])); return; }
         final Runnable finish = () -> {
             if (done[0]) return;
             done[0] = true;
@@ -432,7 +479,7 @@ public class JxcNativePlugin extends Plugin {
         LocationListener listener = new LocationListener() {
             @Override public void onLocationChanged(Location l) {
                 if (best[0] == null || l.getAccuracy() <= best[0].getAccuracy() || System.currentTimeMillis() - best[0].getTime() > 120000) best[0] = l;
-                if (l.getAccuracy() <= 50) h.post(finish);
+                if (l.getAccuracy() <= (quick ? 1000 : 50)) h.post(finish);
             }
             @Override public void onStatusChanged(String p, int s, Bundle b) { }
             @Override public void onProviderEnabled(String p) { }
@@ -444,7 +491,7 @@ public class JxcNativePlugin extends Plugin {
             if (net) lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, listener, Looper.getMainLooper());
         } catch (SecurityException e) { call.reject("定位权限未允许", "DENIED"); return; }
         // 网络定位先到时，过 6 秒还没有更准的 GPS 就用它；最长等 timeout
-        h.postDelayed(() -> { if (best[0] != null) finish.run(); }, 6000);
+        h.postDelayed(() -> { if (best[0] != null) finish.run(); }, quick ? 1500 : 6000);
         h.postDelayed(finish, timeout);
     }
 
