@@ -1,6 +1,6 @@
 {
-  "version": "1.14.10",
-  "build": 33,
+  "version": "1.14.11",
+  "build": 34,
   "date": "2026-11-27",
   "force": false,
   "minNative": 9,
@@ -10,14 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "董事长无需申请请假，总经理请假由董事长审批",
-      "按起止日期自动计算整天天数，删除半天时段和其他填写项",
-      "调整语音气泡比例，短语音更紧凑，长度随时长平稳增加"
+      "英文朗读优先高质量音色，语速调至0.8倍",
+      "发送位置不再等待地址查询，显示坐标与精度",
+      "增加发送文件及本机应用打开，单个文件最大10MB；原生增强需更新APK"
     ],
     "en": [
-      "Chairman reviews GM leave without a personal request entry",
-      "Calculate whole leave days from start and end dates",
-      "Compact voice bubbles with proportional duration-based widths"
+      "Higher-quality English voices at 0.8 speed",
+      "Share coordinates without waiting for reverse geocoding",
+      "Chat files up to 10MB and native app chooser; update APK for native improvements"
     ]
   }
 }
