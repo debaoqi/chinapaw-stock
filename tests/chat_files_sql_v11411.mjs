@@ -1,0 +1,12 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFileSync} from 'node:fs';import assert from 'node:assert/strict';
+const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;create schema extensions;create table jxc_users(id text,role text,active boolean);create table jxc_docs(id text,k text,d jsonb);insert into jxc_users values('a','sales',true),('b','sales',true),('x','sales',true);create function jxc_me_row(t text) returns jxc_users language plpgsql as $$declare u jxc_users;begin select * into u from jxc_users where id=t and active;if u.id is null then raise exception 'Session expired';end if;return u;end $$;create function jxc_doc_visible(u jxc_users,k text,d jsonb) returns boolean language sql as $$select d->'mem' is null or d->'mem'='null'::jsonb or d->'mem' ? u.id$$;insert into jxc_docs values('private','chat','{"mem":["a","b"]}');`);
+await db.exec(readFileSync(new URL('../supabase/migrations/v1.14.11_chat_files.sql',import.meta.url),'utf8'));
+const call=async(fn,args)=>(await db.query('select '+fn+'('+args.map((_,i)=>'$'+(i+1)).join(',')+') result',args)).rows[0].result;
+const f=await call('jxc_file_upload',['a','private','报告.pdf','application/pdf',Buffer.from('PDF sample').toString('base64')]);assert.equal(f.size,10);assert.equal(f.name,'报告.pdf');
+await assert.rejects(call('jxc_file_get',['b',f.id]),/unavailable/);
+await db.query("insert into jxc_docs values('msg','msg',$1::jsonb)",[JSON.stringify({ch:'private',mem:['a','b','x'],file:{id:f.id}})]);
+const got=await call('jxc_file_get',['b',f.id]);assert.equal(Buffer.from(got.data,'base64').toString(),'PDF sample');await assert.rejects(call('jxc_file_get',['x',f.id]),/denied/);await assert.rejects(call('jxc_file_upload',['x','private','bad.txt','text/plain','YQ==']),/denied/);await assert.rejects(call('jxc_file_upload',['bad-token','C_all','bad.txt','text/plain','YQ==']),/Session/);
+await assert.rejects(call('jxc_file_upload',['a','private','empty.txt','text/plain','']),/10MB/);await assert.rejects(call('jxc_file_upload',['a','private','big.txt','text/plain','A'.repeat(13981020)]),/10MB/);
+await db.exec(`update jxc_docs set d=d||'{"rc":true}' where k='msg'`);await assert.rejects(call('jxc_file_get',['b',f.id]),/unavailable/);
+console.log('Chat file SQL PASS: private upload/download, invalid session, nonmember denial despite forged message members, missing/recalled message denial, size limits, byte-preserving download.');await db.close();
