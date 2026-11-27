@@ -394,7 +394,9 @@ body.chat-room-ui .chat-messages-pad{padding:12px 12px 0}
 .chat-bubble .pill{border:0;border-radius:4px;background:rgba(0,0,0,.07);color:#333;font-size:12px;font-weight:400;min-height:28px}
 .chat-bubble .action-control{background:transparent;border:0!important;border-radius:0;padding:0;min-height:0}
 body.chat-room-ui .chat-audio-button{border:0;border-radius:0;background:transparent;color:#111;display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:100%;min-height:24px;height:24px;padding:0}
-.chat-audio-button b{font-size:16px;font-weight:400;line-height:24px}
+.chat-voice-bubble{max-width:100%;min-height:42px;padding:9px 12px}
+body.chat-room-ui .chat-voice-bubble .chat-audio-button{width:100%;gap:12px}
+.chat-audio-button b{font-size:15px;font-weight:400;line-height:24px}
 .chat-audio-button.incoming{flex-direction:row-reverse}
 .chat-audio-button.incoming .i{transform:rotate(180deg)}
 .chat-audio-button.playing .i{animation:pl .8s infinite}
