@@ -1,7 +1,7 @@
 {
-  "version": "1.14.9",
-  "build": 32,
-  "date": "2026-11-26",
+  "version": "1.14.10",
+  "build": 33,
+  "date": "2026-11-27",
   "force": false,
   "minNative": 9,
   "forceNative": false,
@@ -10,10 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "销售单状态筛选改为两行，完整显示名称与数量"
+      "董事长无需申请请假，总经理请假由董事长审批",
+      "按起止日期自动计算整天天数，删除半天时段和其他填写项",
+      "调整语音气泡比例，短语音更紧凑，长度随时长平稳增加"
     ],
     "en": [
-      "Show all sales status filters and counts in two rows"
+      "Chairman reviews GM leave without a personal request entry",
+      "Calculate whole leave days from start and end dates",
+      "Compact voice bubbles with proportional duration-based widths"
     ]
   }
 }
