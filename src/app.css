@@ -438,3 +438,6 @@ body.chat-ui .phone:before{content:'';position:absolute;top:0;left:0;right:0;hei
 body.chat-ui .tnav button.on .tl{font-weight:var(--weight-heading)}
 .chat-ui .chat-hide{font-size:var(--text-secondary);font-weight:var(--weight-strong)}
 .chat-ui .chat-home .sec-h{font-size:13px;font-weight:var(--weight-strong)}
+
+.chat-file{display:flex;align-items:center;gap:12px;width:220px;max-width:100%;min-height:64px;text-align:left;background:transparent;color:inherit;padding:0;border:0}
+.chat-file>span{min-width:0;flex:1}.chat-file b{display:block;overflow-wrap:anywhere;font-size:14px;line-height:1.4}.chat-file small{display:block;margin-top:6px;color:#666;font-size:11px}.chat-file .i{flex:none}
