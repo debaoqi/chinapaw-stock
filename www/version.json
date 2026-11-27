@@ -3,7 +3,7 @@
   "build": 35,
   "date": "2026-11-27",
   "force": false,
-  "minNative": 11,
+  "minNative": 12,
   "forceNative": false,
   "apk": "https://github.com/debaoqi/chinapaw-stock/releases/latest/download/ChinaPawStock.apk",
   "apkMirror": "https://debaoqi.github.io/chinapaw-stock/app/ChinaPawStock.apk",
