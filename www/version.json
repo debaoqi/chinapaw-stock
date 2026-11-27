@@ -1,6 +1,6 @@
 {
-  "version": "1.14.11",
-  "build": 34,
+  "version": "1.14.12",
+  "build": 35,
   "date": "2026-11-27",
   "force": false,
   "minNative": 11,
@@ -10,14 +10,14 @@
   "apkExt": "https://cdn.jsdelivr.net/gh/debaoqi/chinapaw-stock@main/www/app/ChinaPawStock.apk",
   "notes": {
     "zh": [
-      "英文朗读优先高质量音色，语速调至0.8倍",
-      "发送位置不再等待地址查询，显示坐标与精度",
-      "增加发送文件及本机应用打开，单个文件最大10MB；原生增强需更新APK"
+      "朗读即时显示暂停图标、准备中与播放状态，支持暂停后继续",
+      "增加点击触感和按下反馈，预热语音引擎减少首次等待",
+      "朗读固定0.8倍语速；完整暂停控制需安装新版APK"
     ],
     "en": [
-      "Higher-quality English voices at 0.8 speed",
-      "Share coordinates without waiting for reverse geocoding",
-      "Chat files up to 10MB and native app chooser; update APK for native improvements"
+      "Immediate speech state, pause and resume controls",
+      "Haptic tap feedback and prewarmed speech engine",
+      "0.8 speech rate; update APK for full controls"
     ]
   }
 }
